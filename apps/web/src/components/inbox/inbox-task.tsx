@@ -15,6 +15,10 @@ import { useWorkspacePermission } from "@/hooks/use-workspace-permission";
 import { getColumnIcon } from "@/lib/column";
 import { getPriorityLabel, getStatusDisplayLabel } from "@/lib/i18n/domain";
 import { getPriorityIcon } from "@/lib/priority";
+import {
+  formatAssigneeNames,
+  resolveTaskAssignees,
+} from "@/lib/resolve-task-assignees";
 import { useShortcut } from "@/lib/shortcuts/use-shortcut";
 
 type InboxTaskProps = {
@@ -160,12 +164,19 @@ export function InboxTask({ taskId, workspaceId }: InboxTaskProps) {
               </dd>
             </div>
           )}
-          {task.assigneeName && (
-            <div className="flex items-center gap-1.5">
-              <dt className="sr-only">{t("tasks:assignee.label")}</dt>
-              <dd>{task.assigneeName}</dd>
-            </div>
-          )}
+          {(() => {
+            const assigneeNames = formatAssigneeNames(
+              resolveTaskAssignees(task),
+              task.assigneeName ?? "",
+            );
+            if (!assigneeNames) return null;
+            return (
+              <div className="flex items-center gap-1.5">
+                <dt className="sr-only">{t("tasks:assignee.label")}</dt>
+                <dd>{assigneeNames}</dd>
+              </div>
+            );
+          })()}
         </dl>
       </div>
 

@@ -24,6 +24,7 @@ import {
 } from "../../utils/assert-assignable-user";
 import { nextOccurrenceDates } from "../recurrence/next-occurrence-date";
 import { OccurrenceProjectChangedError } from "../recurrence/occurrence-project-changed-error";
+import { getTaskAssigneeIds, syncTaskAssignees } from "../task-assignees";
 import { taskIsCompleted } from "../task-is-completed";
 import {
   assertRequiredCustomFields,
@@ -143,6 +144,7 @@ type Occurrence = {
 class RuleAlreadyMovedError extends Error {}
 
 type DuplicatedTask = typeof taskTable.$inferSelect & {
+  userIds: string[];
   assigneeName: string | undefined;
 };
 
@@ -191,23 +193,31 @@ async function duplicateTask({
   await assertValidTaskStatus(status, sourceTask.projectId);
   // A manual copy reports a departed assignee; an occurrence goes unassigned
   // so the series keeps going.
-  let userId = sourceTask.userId;
-  if (userId) {
-    const members = await filterAssignableUsers([userId], project.workspaceId);
-    if (!members.has(userId)) {
+  let assigneeIds = await getTaskAssigneeIds(
+    db,
+    sourceTask.id,
+    sourceTask.userId,
+  );
+  if (assigneeIds.length > 0) {
+    const members = await filterAssignableUsers(
+      assigneeIds,
+      project.workspaceId,
+    );
+    if (assigneeIds.some((id) => !members.has(id))) {
       if (!occurrence) {
         throw new HTTPException(403, { message: NOT_ASSIGNABLE });
       }
-      userId = null;
+      assigneeIds = assigneeIds.filter((id) => members.has(id));
     }
   }
-  if (userId) {
+  if (assigneeIds.length > 0) {
     const permitted = await filterUsersWithProjectAccess(
-      [userId],
+      assigneeIds,
       sourceTask.projectId,
     );
-    if (!permitted.has(userId)) userId = null;
+    assigneeIds = assigneeIds.filter((id) => permitted.has(id));
   }
+  const userId = assigneeIds[0] ?? null;
   const column = await db.query.columnTable.findFirst({
     where: and(
       eq(columnTable.projectId, sourceTask.projectId),
@@ -400,6 +410,10 @@ async function duplicateTask({
         });
       }
 
+      if (assigneeIds.length > 0) {
+        await syncTaskAssignees(tx, task.id, assigneeIds);
+      }
+
       if (customFields.length > 0) {
         await tx
           .insert(customFieldValueTable)
@@ -456,6 +470,7 @@ async function duplicateTask({
     ...duplicatedTask,
     taskId: duplicatedTask.id,
     userId: duplicatedTask.userId ?? "",
+    userIds: assigneeIds,
     currentUserId,
     type: "created",
     content: null,
@@ -476,6 +491,7 @@ async function duplicateTask({
 
   return {
     ...duplicatedTask,
+    userIds: assigneeIds,
     assigneeName: assignee?.name,
   };
 }

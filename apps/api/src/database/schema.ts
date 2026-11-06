@@ -733,6 +733,35 @@ export const taskTable = pgTable(
   ],
 );
 
+export const taskAssigneeTable = pgTable(
+  "task_assignee",
+  {
+    id: text("id")
+      .$defaultFn(() => createId())
+      .primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => taskTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => userTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    createdAt: timestamp("created_at", { mode: "date" })
+      .default(utcNow)
+      .notNull(),
+  },
+  (table) => [
+    unique("task_assignee_task_user_unique").on(table.taskId, table.userId),
+    index("task_assignee_taskId_idx").on(table.taskId),
+    index("task_assignee_userId_idx").on(table.userId),
+  ],
+);
+
 export const billingReminderSentTable = pgTable(
   "billing_reminder_sent",
   {

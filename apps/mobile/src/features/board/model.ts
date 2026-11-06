@@ -40,8 +40,15 @@ export function matches(f: BoardFilters, task: BoardTask): boolean {
     if (!inTitle && !inNumber) return false;
   }
   if (f.assignees.length) {
-    const key = task.assigneeId ?? task.userId ?? UNASSIGNED;
-    if (!f.assignees.includes(key)) return false;
+    const assigneeIds =
+      task.userIds && task.userIds.length > 0
+        ? task.userIds
+        : task.assignees && task.assignees.length > 0
+          ? task.assignees.map((assignee) => assignee.id)
+          : task.assigneeId || task.userId
+            ? [String(task.assigneeId ?? task.userId)]
+            : [UNASSIGNED];
+    if (!assigneeIds.some((key) => f.assignees.includes(key))) return false;
   }
   if (
     f.priorities.length &&

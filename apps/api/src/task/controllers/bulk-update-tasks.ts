@@ -20,6 +20,11 @@ import { assertAssignableUser } from "../../utils/assert-assignable-user";
 import { publishTaskMutation } from "./task-mutation-effects";
 import { getSubtaskParentProjects } from "../get-subtask-parent-projects";
 import {
+  areAssigneeListsEqual,
+  getTaskAssigneeIds,
+  syncTaskAssignees,
+} from "../task-assignees";
+import {
   assertValidPriority,
   assertValidTaskStatus,
 } from "../validate-task-fields";
@@ -28,10 +33,70 @@ type BulkOperation =
   | "updateStatus"
   | "updatePriority"
   | "updateAssignee"
+  | "addAssignee"
+  | "removeAssignee"
   | "delete"
   | "addLabel"
   | "removeLabel"
   | "updateDueDate";
+
+async function mutateBulkTaskAssignees(
+  tasks: ReadonlyArray<{ id: string; projectId: string }>,
+  foundIds: string[],
+  computeNextIds: (currentIds: string[]) => string[],
+) {
+  return db.transaction(async (tx) => {
+    const locked = await tx
+      .select({
+        id: taskTable.id,
+        projectId: taskTable.projectId,
+        title: taskTable.title,
+        userId: taskTable.userId,
+      })
+      .from(taskTable)
+      .where(inArray(taskTable.id, foundIds))
+      .orderBy(asc(taskTable.id))
+      .for("update");
+    const originalProjects = new Map(
+      tasks.map((task) => [task.id, task.projectId]),
+    );
+    if (
+      locked.length !== foundIds.length ||
+      locked.some((task) => task.projectId !== originalProjects.get(task.id))
+    )
+      throw new HTTPException(409, {
+        message: "Tasks changed projects; retry the operation",
+      });
+
+    const results = [];
+    for (const task of locked) {
+      const currentIds = await getTaskAssigneeIds(tx, task.id, task.userId);
+      const nextIds = computeNextIds(currentIds);
+      const syncResult = await syncTaskAssignees(
+        tx,
+        task.id,
+        nextIds,
+        task.userId,
+      );
+      if (
+        task.userId !== syncResult.primaryUserId ||
+        !areAssigneeListsEqual(syncResult.beforeIds, syncResult.afterIds)
+      ) {
+        await tx
+          .update(taskTable)
+          .set({ userId: syncResult.primaryUserId, updatedAt: new Date() })
+          .where(eq(taskTable.id, task.id));
+      }
+      results.push({
+        before: task,
+        after: { ...task, userId: syncResult.primaryUserId },
+        beforeIds: syncResult.beforeIds,
+        afterIds: syncResult.afterIds,
+      });
+    }
+    return results;
+  });
+}
 
 async function bulkUpdateTasks({
   taskIds,
@@ -259,47 +324,79 @@ async function bulkUpdateTasks({
             where: eq(userTable.id, assigneeId),
           })
         : undefined;
-      const before = await db.transaction(async (tx) => {
-        const locked = await tx
-          .select({
-            id: taskTable.id,
-            projectId: taskTable.projectId,
-            title: taskTable.title,
-            userId: taskTable.userId,
-          })
-          .from(taskTable)
-          .where(inArray(taskTable.id, foundIds))
-          .orderBy(asc(taskTable.id))
-          .for("update");
-        const originalProjects = new Map(
-          tasks.map((task) => [task.id, task.projectId]),
-        );
-        if (
-          locked.length !== foundIds.length ||
-          locked.some(
-            (task) => task.projectId !== originalProjects.get(task.id),
-          )
-        )
-          throw new HTTPException(409, {
-            message: "Tasks changed projects; retry the operation",
-          });
-        await tx
-          .update(taskTable)
-          .set({ userId: assigneeId })
-          .where(inArray(taskTable.id, foundIds));
-        return locked;
+      const mutations = await mutateBulkTaskAssignees(tasks, foundIds, () =>
+        assigneeId ? [assigneeId] : [],
+      );
+      updatedCount = mutations.length;
+      for (const item of mutations) {
+        await publishTaskMutation(item.before, item.after, userId, {
+          fields: ["userId"],
+          beforeUserIds: item.beforeIds,
+          afterUserIds: item.afterIds,
+          assigneeName: assignee?.name ?? null,
+        });
+      }
+      break;
+    }
+
+    case "addAssignee": {
+      const assigneeId = value?.trim() || null;
+      if (!assigneeId) {
+        throw new HTTPException(400, { message: "Assignee ID is required" });
+      }
+
+      await assertAssignableUser(
+        assigneeId,
+        workspaceId,
+        tasks.map((task) => task.projectId),
+      );
+
+      const assignee = await db.query.userTable.findFirst({
+        columns: { name: true },
+        where: eq(userTable.id, assigneeId),
       });
-      updatedCount = before.length;
-      for (const task of before)
-        await publishTaskMutation(
-          task,
-          {
-            ...task,
-            userId: assigneeId,
-          },
-          userId,
-          { fields: ["userId"], assigneeName: assignee?.name ?? null },
-        );
+
+      const mutations = await mutateBulkTaskAssignees(
+        tasks,
+        foundIds,
+        (currentIds) =>
+          currentIds.includes(assigneeId)
+            ? currentIds
+            : [...currentIds, assigneeId],
+      );
+
+      updatedCount = mutations.length;
+      for (const item of mutations) {
+        await publishTaskMutation(item.before, item.after, userId, {
+          fields: ["userId"],
+          beforeUserIds: item.beforeIds,
+          afterUserIds: item.afterIds,
+          assigneeName: assignee?.name ?? null,
+        });
+      }
+      break;
+    }
+
+    case "removeAssignee": {
+      const assigneeId = value?.trim() || null;
+      if (!assigneeId) {
+        throw new HTTPException(400, { message: "Assignee ID is required" });
+      }
+
+      const mutations = await mutateBulkTaskAssignees(
+        tasks,
+        foundIds,
+        (currentIds) => currentIds.filter((id) => id !== assigneeId),
+      );
+
+      updatedCount = mutations.length;
+      for (const item of mutations) {
+        await publishTaskMutation(item.before, item.after, userId, {
+          fields: ["userId"],
+          beforeUserIds: item.beforeIds,
+          afterUserIds: item.afterIds,
+        });
+      }
       break;
     }
 

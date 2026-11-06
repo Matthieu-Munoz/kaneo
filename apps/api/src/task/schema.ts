@@ -63,6 +63,8 @@ export const bulkUpdateBody = z.object({
     "updateStatus",
     "updatePriority",
     "updateAssignee",
+    "addAssignee",
+    "removeAssignee",
     "delete",
     "addLabel",
     "removeLabel",
@@ -82,6 +84,10 @@ export const createTaskBody = z.object({
   priority,
   status: z.string().openapi({ description: "The target column's slug." }),
   userId: z.string().optional().openapi({ description: "Assignee, if any." }),
+  userIds: z.array(z.string()).max(50).optional().openapi({
+    description:
+      "Assignee user IDs, if any. Takes precedence over `userId` when provided.",
+  }),
   recurrence: taskRecurrenceSchema
     .optional()
     .openapi({ description: "Omit to create a task that does not repeat." }),
@@ -104,6 +110,10 @@ export const updateTaskBody = z.object({
   projectId: z.string(),
   position: z.number().int().min(0).max(MAX_TASK_POSITION),
   userId: z.string().optional(),
+  userIds: z.array(z.string()).max(50).optional().openapi({
+    description:
+      "Assignee user IDs, if any. Takes precedence over `userId` when provided.",
+  }),
 });
 
 export const moveTaskBody = z.object({
@@ -129,15 +139,31 @@ export const importTasksBody = z.object({
         description:
           "Assignable user's ID or email address. Emails match case-insensitively. Null, empty, or omitted leaves the task unassigned.",
       }),
+      userIds: z.array(z.string()).max(50).optional().openapi({
+        description:
+          "Assignable users' IDs or email addresses. Takes precedence over `userId` when provided.",
+      }),
     }),
   ),
 });
 
 export const updateStatusBody = z.object({ status: z.string() });
 export const updatePriorityBody = z.object({ priority });
-export const updateAssigneeBody = z.object({
-  userId: z.string().nullable().openapi({ description: "Null unassigns." }),
-});
+export const updateAssigneeBody = z
+  .object({
+    userId: z
+      .string()
+      .nullable()
+      .optional()
+      .openapi({ description: "Null unassigns." }),
+    userIds: z.array(z.string()).max(50).optional().openapi({
+      description:
+        "Full list of assignee user IDs; an empty array unassigns all. Takes precedence over `userId` when provided.",
+    }),
+  })
+  .refine((body) => body.userId !== undefined || body.userIds !== undefined, {
+    message: "Either userId or userIds is required",
+  });
 export const updateDueDateBody = z.object({ dueDate: z.string().optional() });
 export const updateRecurrenceBody = z.object({
   recurrence: z

@@ -11,6 +11,7 @@ import {
   projectTable,
   taskRelationTable,
 } from "../../database/schema";
+import { loadTaskAssigneesMap } from "../task-assignees";
 
 async function getTask(taskId: string, board = false, userId?: string) {
   const task = await db
@@ -35,6 +36,7 @@ async function getTask(taskId: string, board = false, userId?: string) {
       userId: taskTable.userId,
       assigneeName: userTable.name,
       assigneeId: userTable.id,
+      assigneeImage: userTable.image,
       projectId: taskTable.projectId,
       workspaceId: sql<string>`(select ${projectTable.workspaceId} from ${projectTable} where ${projectTable.id} = ${taskTable.projectId})`,
     })
@@ -49,8 +51,16 @@ async function getTask(taskId: string, board = false, userId?: string) {
     });
   }
 
-  if (!board) return task[0];
-  const { workspaceId, ...result } = task[0];
+  const assigneesMap = await loadTaskAssigneesMap(db, [task[0]]);
+  const assignees = assigneesMap.get(taskId) ?? [];
+  const taskWithAssignees = {
+    ...task[0],
+    userIds: assignees.map((assignee) => assignee.id),
+    assignees,
+  };
+
+  if (!board) return taskWithAssignees;
+  const { workspaceId, ...result } = taskWithAssignees;
   if (!workspaceId) return result;
   const parent = alias(taskTable, "parent");
   const parents = await db

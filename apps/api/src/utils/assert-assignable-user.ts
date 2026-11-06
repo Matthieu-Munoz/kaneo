@@ -51,26 +51,42 @@ export async function filterAssignableUsers(
   return assignable;
 }
 
+export async function assertAssignableUsers(
+  userIds: readonly string[],
+  workspaceId: string,
+  projectIds: string | readonly string[],
+  database: Pick<typeof db, "select"> = db,
+): Promise<void> {
+  if (userIds.length === 0) {
+    return;
+  }
+
+  const uniqueUserIds = Array.from(new Set(userIds));
+  const assignable = await filterAssignableUsers(
+    uniqueUserIds,
+    workspaceId,
+    database,
+  );
+
+  if (uniqueUserIds.some((userId) => !assignable.has(userId))) {
+    throw new HTTPException(403, { message: NOT_ASSIGNABLE });
+  }
+
+  const ids = typeof projectIds === "string" ? [projectIds] : projectIds;
+  for (const userId of uniqueUserIds) {
+    if ((await findInaccessibleProjectIds(userId, ids, database)).length > 0) {
+      throw new HTTPException(403, { message: NO_PROJECT_ACCESS });
+    }
+  }
+}
+
 export async function assertAssignableUser(
   userId: string,
   workspaceId: string,
   projectIds: string | readonly string[],
   database: Pick<typeof db, "select"> = db,
 ): Promise<void> {
-  const assignable = await filterAssignableUsers(
-    [userId],
-    workspaceId,
-    database,
-  );
-
-  if (!assignable.has(userId)) {
-    throw new HTTPException(403, { message: NOT_ASSIGNABLE });
-  }
-
-  const ids = typeof projectIds === "string" ? [projectIds] : projectIds;
-  if ((await findInaccessibleProjectIds(userId, ids, database)).length > 0) {
-    throw new HTTPException(403, { message: NO_PROJECT_ACCESS });
-  }
+  return assertAssignableUsers([userId], workspaceId, projectIds, database);
 }
 
 export async function getProjectWorkspaceId(

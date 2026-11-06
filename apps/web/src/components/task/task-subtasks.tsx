@@ -117,6 +117,8 @@ export default function TaskSubtasks({
     position: null,
     createdAt: "",
     userId: subtask.task.userId,
+    userIds: subtask.task.userIds,
+    assignees: subtask.task.assignees,
     assigneeId: subtask.task.userId,
     assigneeName: subtask.task.assigneeName,
     projectId: subtask.task.projectId,

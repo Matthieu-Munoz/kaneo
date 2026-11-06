@@ -297,10 +297,11 @@ export function registerTools(
         startDate: optionalIsoDateTimeSchema,
         dueDate: optionalIsoDateTimeSchema,
         userId: optionalNonEmptyString,
+        userIds: z.array(nonEmptyString).max(50).optional(),
       }),
     },
     async (args) => {
-      const body: Record<string, string | undefined> = {
+      const body: Record<string, string | string[] | undefined> = {
         title: args.title,
         description: args.description,
         priority: args.priority,
@@ -314,6 +315,9 @@ export function registerTools(
       }
       if (args.userId !== undefined) {
         body.userId = args.userId;
+      }
+      if (args.userIds !== undefined) {
+        body.userIds = args.userIds;
       }
       return run(() =>
         client.json(`/api/task/${encodeURIComponent(args.projectId)}`, {
@@ -359,6 +363,7 @@ export function registerTools(
     startDate: nullableOptionalIsoDateTimeSchema,
     dueDate: nullableOptionalIsoDateTimeSchema,
     userId: nullableOptionalNonEmptyString,
+    userIds: z.array(nonEmptyString).max(50).optional(),
   });
 
   registerTool(
@@ -794,21 +799,40 @@ export function registerTools(
     "update_task_assignee",
     {
       description:
-        "Assign a task to a workspace member, or pass a null userId to unassign it.",
+        "Assign a task to one or more workspace members, or pass null userId / empty userIds to unassign it.",
       inputSchema: z.object({
         taskId: nonEmptyString,
         userId: nonEmptyString
           .nullable()
+          .optional()
           .describe("Member user ID, or null to unassign"),
+        userIds: z
+          .array(nonEmptyString)
+          .max(50)
+          .optional()
+          .describe(
+            "Full list of assignee user IDs; an empty array unassigns all",
+          ),
       }),
     },
-    async (args) =>
-      run(() =>
+    async (args) => {
+      if (args.userId === undefined && args.userIds === undefined) {
+        return errorResult("Either userId or userIds is required.");
+      }
+      const payload: Record<string, unknown> = {};
+      if (args.userId !== undefined) {
+        payload.userId = args.userId;
+      }
+      if (args.userIds !== undefined) {
+        payload.userIds = args.userIds;
+      }
+      return run(() =>
         client.json(`/api/task/assignee/${encodeURIComponent(args.taskId)}`, {
           method: "PUT",
-          body: JSON.stringify({ userId: args.userId }),
+          body: JSON.stringify(payload),
         }),
-      ),
+      );
+    },
   );
 
   registerTool(

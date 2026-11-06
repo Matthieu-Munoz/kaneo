@@ -6,6 +6,8 @@ type BulkOperationType =
   | "updateStatus"
   | "updatePriority"
   | "updateAssignee"
+  | "addAssignee"
+  | "removeAssignee"
   | "delete"
   | "addLabel"
   | "removeLabel"

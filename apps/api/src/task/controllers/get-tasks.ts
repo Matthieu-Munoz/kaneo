@@ -7,6 +7,7 @@ import {
   gte,
   inArray,
   lte,
+  or,
   type SQL,
   type SQLWrapper,
   sql,
@@ -19,6 +20,7 @@ import {
   externalLinkTable,
   labelTable,
   projectTable,
+  taskAssigneeTable,
   taskTable,
   taskRelationTable,
   userTable,
@@ -30,6 +32,7 @@ import {
   descriptionDeferred,
   projectDescriptionDeferred,
 } from "../description-pages";
+import { loadTaskAssigneesMap } from "../task-assignees";
 import { taskIsCompleted } from "../task-is-completed";
 import { getSubtaskCounts } from "../get-subtask-counts";
 
@@ -129,7 +132,19 @@ async function getTasksPage(
   }
 
   if (options.assigneeId) {
-    conditions.push(eq(taskTable.userId, options.assigneeId));
+    const assigneeCondition = or(
+      eq(taskTable.userId, options.assigneeId),
+      inArray(
+        taskTable.id,
+        db
+          .select({ taskId: taskAssigneeTable.taskId })
+          .from(taskAssigneeTable)
+          .where(eq(taskAssigneeTable.userId, options.assigneeId)),
+      ),
+    );
+    if (assigneeCondition) {
+      conditions.push(assigneeCondition);
+    }
   }
 
   if (options.dueBefore) {
@@ -216,6 +231,8 @@ async function getTasksPage(
     options.publicOnly ?? false,
     userId,
   );
+
+  const taskAssigneesMap = await loadTaskAssigneesMap(db, paginatedTasks);
 
   const labelsData =
     taskIds.length > 0
@@ -419,8 +436,34 @@ async function getTasksPage(
           eq(projectTable.isPublic, true),
         ),
       );
-    publicRelatedRevision = `${labels?.revision}:${links?.revision}:${children?.revision}`;
+    const [assignees] = await db
+      .select({
+        revision: boardRevision(true, [
+          taskAssigneeTable.id,
+          taskAssigneeTable.taskId,
+          taskAssigneeTable.userId,
+          userTable.name,
+          userTable.image,
+        ]),
+      })
+      .from(taskAssigneeTable)
+      .innerJoin(taskTable, eq(taskAssigneeTable.taskId, taskTable.id))
+      .leftJoin(userTable, eq(taskAssigneeTable.userId, userTable.id))
+      .where(whereClause);
+    publicRelatedRevision = `${labels?.revision}:${links?.revision}:${children?.revision}:${assignees?.revision}`;
   }
+
+  const decorateTask = (task: (typeof paginatedTasks)[number]) => {
+    const assignees = taskAssigneesMap.get(task.id) ?? [];
+    return {
+      ...task,
+      userIds: assignees.map((assignee) => assignee.id),
+      assignees,
+      subtaskCounts: subtaskCounts.get(task.id) ?? { completed: 0, total: 0 },
+      labels: taskLabelsMap.get(task.id) || [],
+      externalLinks: taskExternalLinksMap.get(task.id) || [],
+    };
+  };
 
   const columns = projectColumns.map((column) => ({
     id: column.slug,
@@ -431,31 +474,16 @@ async function getTasksPage(
     isFinal: column.isFinal,
     tasks: paginatedTasks
       .filter((task) => task.status === column.slug)
-      .map((task) => ({
-        ...task,
-        subtaskCounts: subtaskCounts.get(task.id) ?? { completed: 0, total: 0 },
-        labels: taskLabelsMap.get(task.id) || [],
-        externalLinks: taskExternalLinksMap.get(task.id) || [],
-      })),
+      .map(decorateTask),
   }));
 
   const archivedTasks = paginatedTasks
     .filter((task) => task.status === "archived")
-    .map((task) => ({
-      ...task,
-      subtaskCounts: subtaskCounts.get(task.id) ?? { completed: 0, total: 0 },
-      labels: taskLabelsMap.get(task.id) || [],
-      externalLinks: taskExternalLinksMap.get(task.id) || [],
-    }));
+    .map(decorateTask);
 
   const plannedTasks = paginatedTasks
     .filter((task) => task.status === "planned")
-    .map((task) => ({
-      ...task,
-      subtaskCounts: subtaskCounts.get(task.id) ?? { completed: 0, total: 0 },
-      labels: taskLabelsMap.get(task.id) || [],
-      externalLinks: taskExternalLinksMap.get(task.id) || [],
-    }));
+    .map(decorateTask);
 
   return {
     data: {

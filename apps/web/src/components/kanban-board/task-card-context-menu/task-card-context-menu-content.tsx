@@ -36,6 +36,10 @@ import { generateLink } from "@/lib/generate-link";
 import { getInitials } from "@/lib/get-initials";
 import { getPriorityLabel } from "@/lib/i18n/domain";
 import { getPriorityIcon } from "@/lib/priority";
+import {
+  getTaskAssigneeIds,
+  toggleTaskAssigneeId,
+} from "@/lib/resolve-task-assignees";
 import { getTaskPath } from "@/lib/task-link";
 import { toast } from "@/lib/toast";
 import useProjectStore from "@/store/project";
@@ -142,9 +146,16 @@ export default function TaskCardContextMenuContent({
         case "status":
           await updateTaskStatus({ ...task, status: value as string });
           break;
-        case "userId":
-          await updateTaskAssignee({ ...task, userId: value as string });
+        case "userId": {
+          const currentIds = getTaskAssigneeIds(task);
+          const nextUserIds = toggleTaskAssigneeId(currentIds, value as string);
+          await updateTaskAssignee({
+            ...task,
+            userId: nextUserIds[0] ?? "",
+            userIds: nextUserIds,
+          });
           break;
+        }
         case "title":
           await updateTaskTitle({ ...task, title: value as string });
           break;
@@ -242,7 +253,7 @@ export default function TaskCardContextMenuContent({
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-48">
             <ContextMenuCheckboxItem
-              checked={!task.userId}
+              checked={getTaskAssigneeIds(task).length === 0}
               onCheckedChange={() => handleChange("userId", "")}
               closeOnClick
             >
@@ -259,9 +270,8 @@ export default function TaskCardContextMenuContent({
             {usersOptions.map((user) => (
               <ContextMenuCheckboxItem
                 key={user.value}
-                checked={task.userId === user.value}
+                checked={getTaskAssigneeIds(task).includes(user.value ?? "")}
                 onCheckedChange={() => handleChange("userId", user.value ?? "")}
-                closeOnClick
               >
                 <Avatar className="h-6 w-6">
                   <AvatarImage src={user.image ?? ""} alt={user.name || ""} />

@@ -152,6 +152,11 @@ export type Project = {
 };
 
 export type TaskLabel = { id: string; name: string; color: string };
+export type TaskAssignee = {
+  id: string;
+  name: string | null;
+  image?: string | null;
+};
 
 export type BoardTask = {
   id: string;
@@ -165,6 +170,8 @@ export type BoardTask = {
   position?: number | null;
   createdAt?: string | null;
   userId?: string | null;
+  userIds?: string[];
+  assignees?: TaskAssignee[];
   assigneeName?: string | null;
   assigneeId?: string | null;
   assigneeImage?: string | null;
@@ -212,6 +219,8 @@ export type Task = {
   position?: number | null;
   number?: number | null;
   userId?: string | null;
+  userIds?: string[];
+  assignees?: TaskAssignee[];
   title: string;
   description?: string | null;
   descriptionDeferred?: boolean | null;
@@ -224,6 +233,7 @@ export type Task = {
   columnId?: string | null;
   assigneeName?: string | null;
   assigneeId?: string | null;
+  assigneeImage?: string | null;
 };
 
 export type DescriptionPage = {

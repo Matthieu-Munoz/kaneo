@@ -6,6 +6,7 @@ import useGetTask from "@/hooks/queries/task/use-get-task";
 import { useGetActiveWorkspaceUsers } from "@/hooks/queries/workspace-users/use-get-active-workspace-users";
 import { getDueDateStatus, isTaskCompleted } from "@/lib/due-date-status";
 import { getStatusDisplayLabel } from "@/lib/i18n/domain";
+import { resolveTaskAssignees } from "@/lib/resolve-task-assignees";
 
 export function useTaskProperties(
   taskId: string,
@@ -35,6 +36,7 @@ export function useTaskProperties(
     assignee: workspaceUsers?.members?.find(
       (member) => member.userId === task?.userId,
     ),
+    assignees: resolveTaskAssignees(task, workspaceUsers?.members),
     dueStatus: getDueDateStatus(
       task?.dueDate ?? null,
       isTaskCompleted(task?.status ?? "", columns),

@@ -1,4 +1,13 @@
-import { and, eq, inArray, isNotNull, max, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  max,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import createActivities from "../../activity/controllers/create-activities";
 import db from "../../database";
@@ -8,6 +17,7 @@ import {
   integrationTable,
   labelTable,
   projectTable,
+  taskAssigneeTable,
   taskRelationTable,
   taskTable,
   userNotificationWorkspaceProjectTable,
@@ -151,13 +161,27 @@ async function moveProject(
       .from(taskTable)
       .where(eq(taskTable.projectId, id));
 
+    const projectTasksSubquery = tx
+      .select({ id: taskTable.id })
+      .from(taskTable)
+      .where(eq(taskTable.projectId, id));
+
+    const taskAssignees = await tx
+      .select({
+        taskId: taskAssigneeTable.taskId,
+        userId: taskAssigneeTable.userId,
+      })
+      .from(taskAssigneeTable)
+      .where(inArray(taskAssigneeTable.taskId, projectTasksSubquery));
+
     let unassigned: typeof tasks = [];
     const assigneeIds = [
-      ...new Set(
-        tasks
+      ...new Set([
+        ...tasks
           .map((task) => task.userId)
           .filter((userId): userId is string => Boolean(userId)),
-      ),
+        ...taskAssignees.map((row) => row.userId),
+      ]),
     ];
 
     if (assigneeIds.length > 0) {
@@ -176,28 +200,51 @@ async function moveProject(
         id,
         tx,
       );
+
+      await tx
+        .delete(taskAssigneeTable)
+        .where(
+          and(
+            inArray(taskAssigneeTable.taskId, projectTasksSubquery),
+            memberIds.size > 0
+              ? notInArray(taskAssigneeTable.userId, [...memberIds])
+              : undefined,
+          ),
+        );
+
+      const removedJoinTaskIds = new Set(
+        taskAssignees
+          .filter((row) => !memberIds.has(row.userId))
+          .map((row) => row.taskId),
+      );
+
       // Kept as rows rather than a count: each one needs an activity row
       // afterwards, keyed by task id.
       unassigned = tasks.filter(
-        (task) => task.userId && !memberIds.has(task.userId),
+        (task) =>
+          (task.userId && !memberIds.has(task.userId)) ||
+          removedJoinTaskIds.has(task.id),
       );
 
       if (unassigned.length > 0) {
-        // Predicated on the assignees rather than the task ids: the member set
-        // is bounded by workspace size, while the task list isn't, and Postgres
-        // caps a statement at 65535 bind parameters.
-        await tx
-          .update(taskTable)
-          .set({ userId: null })
-          .where(
-            and(
-              eq(taskTable.projectId, id),
-              isNotNull(taskTable.userId),
-              memberIds.size > 0
-                ? notInArray(taskTable.userId, [...memberIds])
-                : undefined,
-            ),
-          );
+        const primaryUnassignedTasks = tasks.filter(
+          (task) => task.userId && !memberIds.has(task.userId),
+        );
+        for (const task of primaryUnassignedTasks) {
+          const [nextAssignee] = await tx
+            .select({ userId: taskAssigneeTable.userId })
+            .from(taskAssigneeTable)
+            .where(eq(taskAssigneeTable.taskId, task.id))
+            .orderBy(
+              asc(taskAssigneeTable.createdAt),
+              asc(taskAssigneeTable.id),
+            )
+            .limit(1);
+          await tx
+            .update(taskTable)
+            .set({ userId: nextAssignee?.userId ?? null })
+            .where(eq(taskTable.id, task.id));
+        }
       }
     }
 

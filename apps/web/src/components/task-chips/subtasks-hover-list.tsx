@@ -1,11 +1,12 @@
 import { useTranslation } from "react-i18next";
-import { AssigneeAvatar } from "@/components/task/properties/assignee-avatar";
+import { AssigneeAvatarStack } from "@/components/task/properties/assignee-avatar-stack";
 import { useProjectSlugs } from "@/components/task/sections/use-project-slugs";
 import CircularProgress from "@/components/ui/circular-progress";
 import useGetTaskRelations from "@/hooks/queries/task-relation/use-get-task-relations";
 import { useGetActiveWorkspaceUsers } from "@/hooks/queries/workspace-users/use-get-active-workspace-users";
 import { cn } from "@/lib/cn";
 import { getColumnIcon } from "@/lib/column";
+import { resolveTaskAssignees } from "@/lib/resolve-task-assignees";
 import type Task from "@/types/task";
 
 type SubtasksHoverListProps = {
@@ -80,14 +81,11 @@ export function SubtasksHoverList({
               >
                 {subtask.title}
               </span>
-              <AssigneeAvatar
-                name={subtask.assigneeName}
-                image={
-                  workspaceUsers?.members?.find(
-                    (member) => member.userId === subtask.userId,
-                  )?.user?.image
-                }
-                assigned={Boolean(subtask.userId)}
+              <AssigneeAvatarStack
+                assignees={resolveTaskAssignees(
+                  subtask,
+                  workspaceUsers?.members,
+                )}
               />
             </button>
           ))

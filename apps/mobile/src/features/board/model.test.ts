@@ -34,6 +34,30 @@ describe("matches", () => {
     expect(matches(f, task({ assigneeId: "u1" }))).toBe(false);
   });
 
+  it("matches tasks when any of multiple assignees matches the filter", () => {
+    const f = { ...emptyFilters, assignees: ["u2"] };
+    expect(
+      matches(
+        f,
+        task({
+          userId: "u1",
+          assigneeId: "u1",
+          userIds: ["u1", "u2"],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      matches(
+        { ...emptyFilters, assignees: ["u3"] },
+        task({
+          userId: "u1",
+          assigneeId: "u1",
+          userIds: ["u1", "u2"],
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("treats tasks without a priority as no-priority", () => {
     const f = { ...emptyFilters, priorities: ["no-priority"] };
     expect(matches(f, task())).toBe(true);

@@ -19,16 +19,21 @@ async function createTask(
   customFields?: { fieldId: string; value: string }[],
   draftAssetIds?: string[],
   recurrence?: CreateTaskRequest["recurrence"],
+  userIds?: string[],
 ) {
   if (!projectId) {
     throw new Error("No project selected for task creation");
   }
 
+  const normalizedUserIds = userIds?.filter(Boolean);
+  const primaryUserId = normalizedUserIds?.[0] ?? userId;
+
   const response = await client.task[":projectId"].$post({
     json: {
       title,
       description,
-      ...(userId ? { userId } : {}),
+      ...(primaryUserId ? { userId: primaryUserId } : {}),
+      ...(normalizedUserIds ? { userIds: normalizedUserIds } : {}),
       status,
       startDate: startDate?.toISOString() || undefined,
       dueDate: dueDate?.toISOString() || undefined,

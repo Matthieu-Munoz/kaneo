@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invalidateMyWork } from "@/lib/invalidate-my-work";
+import { isPerTaskRelationQuery } from "@/lib/relation-query-keys";
 import bulkOperation from "@/fetchers/task/bulk-operation";
 import deleteTask from "@/fetchers/task/delete-task";
 import { removeTasksFromRelations } from "./remove-task-from-relations";
@@ -9,7 +10,9 @@ export function useBulkOperations() {
 
   const invalidateCommon = () => {
     queryClientRef.invalidateQueries({ queryKey: ["tasks"] });
+    queryClientRef.invalidateQueries({ queryKey: ["task"] });
     queryClientRef.invalidateQueries({ queryKey: ["projects"] });
+    queryClientRef.invalidateQueries({ predicate: isPerTaskRelationQuery });
     invalidateMyWork(queryClientRef);
   };
 

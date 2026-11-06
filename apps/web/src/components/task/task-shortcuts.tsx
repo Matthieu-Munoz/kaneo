@@ -7,6 +7,7 @@ import { useUpdateTaskDueDate } from "@/hooks/mutations/task/use-update-task-due
 import useGetTask from "@/hooks/queries/task/use-get-task";
 import useGetTaskRelations from "@/hooks/queries/task-relation/use-get-task-relations";
 import { useWorkspacePermission } from "@/hooks/use-workspace-permission";
+import { getTaskAssigneeIds } from "@/lib/resolve-task-assignees";
 import { useShortcut } from "@/lib/shortcuts/use-shortcut";
 import { toast } from "@/lib/toast";
 import { useTaskCopyActions } from "./header/use-task-copy-actions";
@@ -70,7 +71,15 @@ export function TaskShortcuts({
     async () => {
       if (!task || !user) return;
       try {
-        await updateAssignee({ ...task, userId: user.id });
+        const currentIds = getTaskAssigneeIds(task);
+        const nextUserIds = currentIds.includes(user.id)
+          ? currentIds
+          : [...currentIds, user.id];
+        await updateAssignee({
+          ...task,
+          userId: nextUserIds[0] ?? user.id,
+          userIds: nextUserIds,
+        });
         toast.message(t("tasks:shortcuts.assignedToMe"), {
           icon: UserRoundIcon,
         });

@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { assigneeMenuOptions } from "@/components/task/menus/assignee-menu-options";
 import { getColumnIcon } from "@/lib/column";
-import { getInitials } from "@/lib/get-initials";
 import { getPriorityLabel } from "@/lib/i18n/domain";
 import { resolveLabelColor } from "@/lib/label-color";
 import { getPriorityIcon } from "@/lib/priority";
@@ -26,18 +25,15 @@ export function useBulkOptions(actions: BulkActions) {
       label: getPriorityLabel(priority),
       icon: getPriorityIcon(priority),
     }));
-    const memberOptions: OptionMenuItem[] = members.map((member) => ({
-      value: member.id,
-      label: member.name || t("common:people.someone"),
-      icon: (
-        <Avatar className="size-4">
-          <AvatarImage src={member.image ?? ""} alt="" />
-          <AvatarFallback className="text-[8px]">
-            {getInitials(member.name)}
-          </AvatarFallback>
-        </Avatar>
-      ),
-    }));
+    const memberOptions: OptionMenuItem[] = assigneeMenuOptions(
+      members.map((member) => ({
+        id: member.id,
+        name: member.name || t("common:people.someone"),
+        image: member.image,
+      })),
+      undefined,
+      t("tasks:popover.assignee.unassigned"),
+    );
     const labelOptions: OptionMenuItem[] = labels.map((label) => ({
       value: label.id,
       label: label.name,

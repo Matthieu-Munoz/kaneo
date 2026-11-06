@@ -5,11 +5,18 @@ import { requireEntitlement } from "../../billing/require-entitlement-middleware
 import db from "../../database";
 import { taskTable } from "../../database/schema";
 import { requireWorkspacePermission } from "../../utils/require-workspace-permission";
+import {
+  areAssigneeListsEqual,
+  getTaskAssigneeIds,
+  resolveAssigneeIds,
+} from "../task-assignees";
 
 type BulkTaskOperation =
   | "updateStatus"
   | "updatePriority"
   | "updateAssignee"
+  | "addAssignee"
+  | "removeAssignee"
   | "delete"
   | "addLabel"
   | "removeLabel"
@@ -19,6 +26,8 @@ const BULK_OPERATIONS: readonly BulkTaskOperation[] = [
   "updateStatus",
   "updatePriority",
   "updateAssignee",
+  "addAssignee",
+  "removeAssignee",
   "delete",
   "addLabel",
   "removeLabel",
@@ -54,7 +63,11 @@ export async function requireBulkTaskPermission(c: Context, next: Next) {
     return requireWorkspacePermission({ task: ["delete"] })(c, next);
   }
 
-  if (operation === "updateAssignee") {
+  if (
+    operation === "updateAssignee" ||
+    operation === "addAssignee" ||
+    operation === "removeAssignee"
+  ) {
     return requireWorkspacePermission({ task: ["assign"] })(c, next);
   }
 
@@ -81,8 +94,7 @@ export async function requireBulkTaskEntitlement(c: Context, next: Next) {
 
 export async function requireTaskAssigneePermission(c: Context, next: Next) {
   const id = c.req.param("id");
-  const { userId } = await readJsonBody(c);
-  const nextAssignee = typeof userId === "string" ? userId : null;
+  const { userId, userIds } = await readJsonBody(c);
 
   const [existingTask] = await db
     .select({ userId: taskTable.userId })
@@ -90,7 +102,26 @@ export async function requireTaskAssigneePermission(c: Context, next: Next) {
     .where(eq(taskTable.id, id ?? ""))
     .limit(1);
 
-  if (existingTask && existingTask.userId !== nextAssignee) {
+  if (!existingTask) {
+    return next();
+  }
+
+  const currentAssigneeIds = await getTaskAssigneeIds(
+    db,
+    id ?? "",
+    existingTask.userId,
+  );
+  const nextAssigneeIds = resolveAssigneeIds(
+    {
+      userId: typeof userId === "string" ? userId : "",
+      userIds: Array.isArray(userIds)
+        ? userIds.filter((item): item is string => typeof item === "string")
+        : undefined,
+    },
+    currentAssigneeIds,
+  );
+
+  if (!areAssigneeListsEqual(currentAssigneeIds, nextAssigneeIds)) {
     return requireWorkspacePermission({ task: ["assign"] })(c, next);
   }
 

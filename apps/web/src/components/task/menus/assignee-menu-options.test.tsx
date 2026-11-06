@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import { assigneeMenuOptions } from "./assignee-menu-options";
 
-const members = [{ id: "user-1", name: "John Doe", email: null, image: null }];
+const members = [
+  { id: "user-1", name: "John Doe", email: null, image: null },
+  { id: "user-2", name: "Jane Roe", email: null, image: null },
+];
 
-function selectedValues(current: string | null | undefined) {
+function selectedValues(
+  current: string | readonly string[] | null | undefined,
+) {
   return assigneeMenuOptions(members, current, "Unassigned")
     .filter((option) => option.selected)
     .map((option) => option.value);
@@ -15,15 +20,20 @@ describe("assigneeMenuOptions", () => {
       assigneeMenuOptions(members, null, "Unassigned").map(
         (option) => option.label,
       ),
-    ).toEqual(["Unassigned", "John Doe"]);
+    ).toEqual(["Unassigned", "John Doe", "Jane Roe"]);
   });
 
   it("marks unassigned when nobody is assigned", () => {
     expect(selectedValues(null)).toEqual([""]);
+    expect(selectedValues([])).toEqual([""]);
   });
 
   it("marks the assigned member", () => {
     expect(selectedValues("user-1")).toEqual(["user-1"]);
+  });
+
+  it("marks multiple assigned members", () => {
+    expect(selectedValues(["user-1", "user-2"])).toEqual(["user-1", "user-2"]);
   });
 
   it("marks nothing when the selection is mixed", () => {

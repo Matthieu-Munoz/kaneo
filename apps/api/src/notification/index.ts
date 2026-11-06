@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import db from "../database";
 import { projectTable, taskTable } from "../database/schema";
 import { subscribeToEvent } from "../events";
+import { getTaskAssigneeIds } from "../task/task-assignees";
 import {
   apiRouter,
   createRoute,
@@ -250,28 +251,41 @@ const notification = apiRouter()
 subscribeToEvent<{
   taskId: string;
   userId: string;
+  userIds?: string[];
   currentUserId?: string;
   title: string;
   projectId: string;
 }>("task.created", async (data) => {
-  if (data.userId && data.userId !== data.currentUserId) {
+  const recipientIds = Array.from(
+    new Set(
+      data.userIds && data.userIds.length > 0
+        ? data.userIds
+        : data.userId
+          ? [data.userId]
+          : [],
+    ),
+  ).filter((id) => Boolean(id) && id !== data.currentUserId);
+
+  if (recipientIds.length > 0) {
     const [project] = await db
       .select({ workspaceId: projectTable.workspaceId })
       .from(projectTable)
       .where(eq(projectTable.id, data.projectId))
       .limit(1);
 
-    await createNotification({
-      userId: data.userId,
-      type: "task_created",
-      eventData: {
-        taskTitle: data.title,
-        projectId: data.projectId,
-        workspaceId: project?.workspaceId ?? null,
-      },
-      resourceId: data.taskId,
-      resourceType: "task",
-    });
+    for (const recipientId of recipientIds) {
+      await createNotification({
+        userId: recipientId,
+        type: "task_created",
+        eventData: {
+          taskTitle: data.title,
+          projectId: data.projectId,
+          workspaceId: project?.workspaceId ?? null,
+        },
+        resourceId: data.taskId,
+        resourceType: "task",
+      });
+    }
   }
 });
 
@@ -302,7 +316,16 @@ subscribeToEvent<{
   title: string;
   assigneeId?: string;
 }>("task.status_changed", async (data) => {
-  if (data.assigneeId && data.assigneeId !== data.userId) {
+  const assigneeIds = await getTaskAssigneeIds(
+    db,
+    data.taskId,
+    data.assigneeId,
+  );
+  const recipientIds = assigneeIds.filter(
+    (assigneeId) => Boolean(assigneeId) && assigneeId !== data.userId,
+  );
+
+  if (recipientIds.length > 0) {
     const [task] = await db
       .select({ projectId: taskTable.projectId })
       .from(taskTable)
@@ -317,19 +340,21 @@ subscribeToEvent<{
           .limit(1)
       : [];
 
-    await createNotification({
-      userId: data.assigneeId,
-      type: "task_status_changed",
-      eventData: {
-        taskTitle: data.title,
-        oldStatus: data.oldStatus,
-        newStatus: data.newStatus,
-        projectId: task?.projectId ?? null,
-        workspaceId: project?.workspaceId ?? null,
-      },
-      resourceId: data.taskId,
-      resourceType: "task",
-    });
+    for (const recipientId of recipientIds) {
+      await createNotification({
+        userId: recipientId,
+        type: "task_status_changed",
+        eventData: {
+          taskTitle: data.title,
+          oldStatus: data.oldStatus,
+          newStatus: data.newStatus,
+          projectId: task?.projectId ?? null,
+          workspaceId: project?.workspaceId ?? null,
+        },
+        resourceId: data.taskId,
+        resourceType: "task",
+      });
+    }
   }
 });
 
@@ -377,7 +402,16 @@ subscribeToEvent<{
   taskOwnerId?: string;
   taskTitle?: string;
 }>("time-entry.created", async (data) => {
-  if (data.taskOwnerId && data.taskOwnerId !== data.userId) {
+  const assigneeIds = await getTaskAssigneeIds(
+    db,
+    data.taskId,
+    data.taskOwnerId,
+  );
+  const recipientIds = assigneeIds.filter(
+    (assigneeId) => Boolean(assigneeId) && assigneeId !== data.userId,
+  );
+
+  if (recipientIds.length > 0) {
     const [task] = await db
       .select({ projectId: taskTable.projectId })
       .from(taskTable)
@@ -392,17 +426,19 @@ subscribeToEvent<{
           .limit(1)
       : [];
 
-    await createNotification({
-      userId: data.taskOwnerId,
-      type: "time_entry_created",
-      eventData: {
-        taskTitle: data.taskTitle ?? null,
-        projectId: task?.projectId ?? null,
-        workspaceId: project?.workspaceId ?? null,
-      },
-      resourceId: data.taskId,
-      resourceType: "task",
-    });
+    for (const recipientId of recipientIds) {
+      await createNotification({
+        userId: recipientId,
+        type: "time_entry_created",
+        eventData: {
+          taskTitle: data.taskTitle ?? null,
+          projectId: task?.projectId ?? null,
+          workspaceId: project?.workspaceId ?? null,
+        },
+        resourceId: data.taskId,
+        resourceType: "task",
+      });
+    }
   }
 });
 

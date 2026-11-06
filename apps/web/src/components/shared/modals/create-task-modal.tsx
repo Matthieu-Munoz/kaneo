@@ -131,6 +131,8 @@ function normalizeTask(
     dueDate: task.dueDate ?? null,
     position: task.position ?? 0,
     userId: task.userId ?? null,
+    userIds: task.userIds,
+    assignees: task.assignees,
     assigneeId: task.assigneeId ?? task.userId ?? null,
     assigneeName: task.assigneeName ?? null,
     assigneeImage: task.assigneeImage ?? null,
@@ -240,7 +242,7 @@ function CreateTaskModalContent({
   const titleRef = useAutoGrowTextarea(title);
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>("no-priority");
-  const [assigneeId, setAssigneeId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const [recurrence, setRecurrence] = useState<TaskRecurrence | null>(null);
@@ -284,7 +286,7 @@ function CreateTaskModalContent({
   );
   const projectMembersPending =
     Boolean(resolvedProjectId) && projectMembers === undefined;
-  const assigneeUnconfirmed = Boolean(assigneeId) && projectMembersPending;
+  const assigneeUnconfirmed = assigneeIds.length > 0 && projectMembersPending;
   const assigneeOptions = useMemo(
     () =>
       resolvedProjectId
@@ -296,11 +298,33 @@ function CreateTaskModalContent({
         : workspaceAssigneeOptions,
     [resolvedProjectId, projectMembers, workspaceAssigneeOptions],
   );
-  const selectedUser =
-    assigneeOptions.find((option) => option.id === assigneeId) ??
-    (projectMembersPending
-      ? workspaceAssigneeOptions.find((option) => option.id === assigneeId)
-      : undefined);
+  const selectedUsers = useMemo(
+    () =>
+      assigneeIds
+        .map(
+          (id) =>
+            assigneeOptions.find((option) => option.id === id) ??
+            (projectMembersPending
+              ? workspaceAssigneeOptions.find((option) => option.id === id)
+              : undefined),
+        )
+        .filter((user): user is NonNullable<typeof user> => Boolean(user)),
+    [
+      assigneeIds,
+      assigneeOptions,
+      projectMembersPending,
+      workspaceAssigneeOptions,
+    ],
+  );
+  const selectedUser = selectedUsers[0];
+  useEffect(() => {
+    if (!resolvedProjectId || projectMembers === undefined) return;
+    const allowedIds = new Set(projectMembers.map((member) => member.id));
+    setAssigneeIds((prev) => {
+      const next = prev.filter((id) => allowedIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [resolvedProjectId, projectMembers]);
   const {
     data: projectColumns,
     isError: columnsError,
@@ -405,7 +429,7 @@ function CreateTaskModalContent({
     title.trim() ||
     description.trim() ||
     priority !== "no-priority" ||
-    assigneeId ||
+    assigneeIds.length > 0 ||
     startDate ||
     dueDate ||
     recurrence ||
@@ -563,6 +587,7 @@ function CreateTaskModalContent({
           title: title.trim(),
           description: description.trim() || "",
           userId: selectedUser?.id ?? "",
+          userIds: selectedUsers.map((user) => user.id),
           priority,
           projectId: resolvedProjectId,
           startDate: startDate ? startDate.toISOString() : undefined,
@@ -611,7 +636,7 @@ function CreateTaskModalContent({
         setTitle("");
         setDescription("");
         setPriority("no-priority");
-        setAssigneeId("");
+        setAssigneeIds([]);
         setStartDate(undefined);
         setDueDate(undefined);
         setRecurrence(null);
@@ -1001,23 +1026,32 @@ function CreateTaskModalContent({
                     type="button"
                     className={cn(
                       "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors border border-border hover:bg-accent/50",
-                      selectedUser
+                      selectedUsers.length > 0
                         ? "bg-accent/30 text-foreground"
                         : "text-muted-foreground",
                     )}
                   >
-                    {selectedUser ? (
+                    {selectedUsers.length > 0 ? (
                       <>
-                        <Avatar className="h-4 w-4">
-                          <AvatarImage
-                            src={selectedUser.image ?? ""}
-                            alt={selectedUser.name}
-                          />
-                          <AvatarFallback className="text-[10px] font-medium border border-border/30">
-                            {getInitials(selectedUser.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{selectedUser.name}</span>
+                        <span className="inline-flex items-center -space-x-1">
+                          {selectedUsers.slice(0, 3).map((user) => (
+                            <Avatar
+                              key={user.id}
+                              className="h-4 w-4 ring-1 ring-background"
+                            >
+                              <AvatarImage
+                                src={user.image ?? ""}
+                                alt={user.name}
+                              />
+                              <AvatarFallback className="text-[10px] font-medium border border-border/30">
+                                {getInitials(user.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </span>
+                        <span className="max-w-32 truncate">
+                          {selectedUsers.map((user) => user.name).join(", ")}
+                        </span>
                       </>
                     ) : (
                       <>
@@ -1032,7 +1066,7 @@ function CreateTaskModalContent({
                     <button
                       type="button"
                       className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent/50 text-left transition-colors h-8"
-                      onClick={() => setAssigneeId("")}
+                      onClick={() => setAssigneeIds([])}
                     >
                       <div
                         className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center"
@@ -1047,30 +1081,41 @@ function CreateTaskModalContent({
                       <span className="text-sm">
                         {t("common:modals.createTask.assignUnassigned")}
                       </span>
-                      {!selectedUser && <Check className="ml-auto h-4 w-4" />}
+                      {selectedUsers.length === 0 && (
+                        <Check className="ml-auto h-4 w-4" />
+                      )}
                     </button>
-                    {assigneeOptions.map((member) => (
-                      <button
-                        key={member.id}
-                        type="button"
-                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent/50 text-left transition-colors h-8"
-                        onClick={() => setAssigneeId(member.id)}
-                      >
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage
-                            src={member.image ?? ""}
-                            alt={member.name}
-                          />
-                          <AvatarFallback className="text-xs font-medium border border-border/30">
-                            {getInitials(member.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm">{member.name}</span>
-                        {selectedUser?.id === member.id && (
-                          <Check className="ml-auto h-4 w-4" />
-                        )}
-                      </button>
-                    ))}
+                    {assigneeOptions.map((member) => {
+                      const isSelected = selectedUsers.some(
+                        (user) => user.id === member.id,
+                      );
+                      return (
+                        <button
+                          key={member.id}
+                          type="button"
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent/50 text-left transition-colors h-8"
+                          onClick={() =>
+                            setAssigneeIds((prev) =>
+                              prev.includes(member.id)
+                                ? prev.filter((id) => id !== member.id)
+                                : [...prev, member.id],
+                            )
+                          }
+                        >
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage
+                              src={member.image ?? ""}
+                              alt={member.name}
+                            />
+                            <AvatarFallback className="text-xs font-medium border border-border/30">
+                              {getInitials(member.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{member.name}</span>
+                          {isSelected && <Check className="ml-auto h-4 w-4" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </PopoverContent>
               </Popover>

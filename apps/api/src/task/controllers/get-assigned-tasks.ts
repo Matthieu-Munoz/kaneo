@@ -7,6 +7,7 @@ import {
   inArray,
   isNull,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import db from "../../database";
@@ -14,6 +15,7 @@ import {
   columnTable,
   labelTable,
   projectTable,
+  taskAssigneeTable,
   taskTable,
 } from "../../database/schema";
 import { projectAccessCondition } from "../../project-access/project-access-condition";
@@ -38,7 +40,16 @@ async function getAssignedTasks(
   const openAndMine = and(
     eq(projectTable.workspaceId, workspaceId),
     isNull(projectTable.archivedAt),
-    eq(taskTable.userId, userId),
+    or(
+      eq(taskTable.userId, userId),
+      inArray(
+        taskTable.id,
+        db
+          .select({ taskId: taskAssigneeTable.taskId })
+          .from(taskAssigneeTable)
+          .where(eq(taskAssigneeTable.userId, userId)),
+      ),
+    ),
     ne(taskTable.status, "archived"),
     sql`not coalesce((
       select ${columnTable.isFinal} from ${columnTable}

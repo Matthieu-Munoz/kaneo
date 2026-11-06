@@ -13,6 +13,7 @@ import { resolveImportTaskStatus } from "../resolve-import-task-status";
 import { claimTaskNumber } from "./claim-task-numbers";
 import { nextTaskPosition } from "./next-task-position";
 import { resolveImportAssignees } from "../resolve-import-assignees";
+import { resolveAssigneeIds, syncTaskAssignees } from "../task-assignees";
 
 export type ImportTask = {
   title: string;
@@ -22,6 +23,7 @@ export type ImportTask = {
   startDate?: string | null;
   dueDate?: string | null;
   userId?: string | null;
+  userIds?: string[] | null;
 };
 
 async function importTasks(
@@ -41,9 +43,9 @@ async function importTasks(
 
   const assigneeIds = [
     ...new Set(
-      tasksToImport
-        .map((task) => task.userId?.trim())
-        .filter((id): id is string => Boolean(id)),
+      tasksToImport.flatMap((task) =>
+        resolveAssigneeIds({ userId: task.userId, userIds: task.userIds }),
+      ),
     ),
   ];
 
@@ -64,17 +66,34 @@ async function importTasks(
   const results = [];
 
   for (const taskData of tasksToImport) {
-    const reference = taskData.userId?.trim() || null;
-    const assigneeId = reference ? assignees.get(reference) : null;
+    const references = resolveAssigneeIds({
+      userId: taskData.userId,
+      userIds: taskData.userIds,
+    });
+    const resolvedAssigneeIds: string[] = [];
+    let assigneeError: string | null = null;
 
-    if (reference && (!assigneeId || !assignableIds.has(assigneeId))) {
+    for (const reference of references) {
+      const resolvedId = assignees.get(reference);
+      if (!resolvedId || !assignableIds.has(resolvedId)) {
+        assigneeError = resolvedId ? NO_PROJECT_ACCESS : NOT_ASSIGNABLE;
+        break;
+      }
+      if (!resolvedAssigneeIds.includes(resolvedId)) {
+        resolvedAssigneeIds.push(resolvedId);
+      }
+    }
+
+    if (assigneeError) {
       results.push({
         success: false,
-        error: assigneeId ? NO_PROJECT_ACCESS : NOT_ASSIGNABLE,
+        error: assigneeError,
         task: taskData,
       });
       continue;
     }
+
+    const assigneeId = resolvedAssigneeIds[0] ?? null;
 
     try {
       const resolved = resolveImportTaskStatus(taskData.status, columns);
@@ -136,6 +155,10 @@ async function importTasks(
           })
           .returning();
 
+        if (task && resolvedAssigneeIds.length > 0) {
+          await syncTaskAssignees(tx, task.id, resolvedAssigneeIds);
+        }
+
         return task;
       });
 
@@ -144,6 +167,7 @@ async function importTasks(
           ...createdTask,
           taskId: createdTask.id,
           userId: createdTask.userId ?? "",
+          userIds: resolvedAssigneeIds,
           currentUserId: currentUserId ?? "",
           type: "create",
           content: "imported the task",

@@ -1,5 +1,5 @@
 import { APIError } from "better-auth/api";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   findBillableWorkspaces,
   formatBillableWorkspacesMessage,
@@ -8,6 +8,8 @@ import { syncWorkspaceSeats } from "../../billing/controllers/sync-seats";
 import db from "../../database";
 import { revokeWorkspaceConnections } from "../../ws";
 import {
+  taskAssigneeTable,
+  taskTable,
   userTable,
   workspaceTable,
   workspaceUserTable,
@@ -135,6 +137,29 @@ export async function deleteAccountData(userId: string, database: DbOrTx = db) {
 
   for (const workspaceId of plan.workspaceIdsToLeave) {
     await revokeWorkspaceConnections(userId, workspaceId, { force: true });
+  }
+
+  await database
+    .delete(taskAssigneeTable)
+    .where(eq(taskAssigneeTable.userId, userId));
+
+  const primaryAssignedTasks = await database
+    .select({ id: taskTable.id })
+    .from(taskTable)
+    .where(eq(taskTable.userId, userId));
+
+  for (const task of primaryAssignedTasks) {
+    const [nextAssignee] = await database
+      .select({ userId: taskAssigneeTable.userId })
+      .from(taskAssigneeTable)
+      .where(eq(taskAssigneeTable.taskId, task.id))
+      .orderBy(asc(taskAssigneeTable.createdAt), asc(taskAssigneeTable.id))
+      .limit(1);
+
+    await database
+      .update(taskTable)
+      .set({ userId: nextAssignee?.userId ?? null })
+      .where(eq(taskTable.id, task.id));
   }
 
   return plan;

@@ -22,6 +22,12 @@ type TaskCustomFieldValue = {
   value: string | null;
 };
 
+export type TaskAssignee = {
+  id: string;
+  name: string | null;
+  image?: string | null;
+};
+
 type Task = {
   id: string;
   title: string;
@@ -37,6 +43,8 @@ type Task = {
   createdAt: string;
   updatedAt?: string;
   userId: string | null;
+  userIds?: string[];
+  assignees?: TaskAssignee[];
   assigneeId: string | null;
   assigneeName: string | null;
   assigneeImage?: string | null;

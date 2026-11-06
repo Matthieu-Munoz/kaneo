@@ -46,7 +46,7 @@ const toCommandItems = (
   run: (value: string) => unknown,
 ): BulkCommandItem[] =>
   options.map((option) => ({
-    value: `${prefix}-${option.value}`,
+    value: `${prefix}-${option.value || "unassigned"}`,
     label: option.label,
     icon: option.icon,
     onRun: () => void run(option.value),

@@ -16,6 +16,7 @@ import {
   notificationTable,
   projectTable,
   sessionTable,
+  taskAssigneeTable,
   taskRelationTable,
   taskReminderSentTable,
   taskTable,
@@ -39,6 +40,7 @@ export const userTableRelations = relations(userTable, ({ many, one }) => ({
   teamMembers: many(teamMemberTable),
   workspaceMemberships: many(workspaceUserTable),
   assignedTasks: many(taskTable),
+  taskAssignees: many(taskAssigneeTable),
   timeEntries: many(timeEntryTable),
   activities: many(activityTable),
   comments: many(commentTable),
@@ -144,6 +146,7 @@ export const taskTableRelations = relations(taskTable, ({ one, many }) => ({
     fields: [taskTable.userId],
     references: [userTable.id],
   }),
+  taskAssignees: many(taskAssigneeTable),
   column: one(columnTable, {
     fields: [taskTable.columnId],
     references: [columnTable.id],
@@ -159,6 +162,20 @@ export const taskTableRelations = relations(taskTable, ({ one, many }) => ({
   remindersSent: many(taskReminderSentTable),
   customFieldValues: many(customFieldValueTable),
 }));
+
+export const taskAssigneeTableRelations = relations(
+  taskAssigneeTable,
+  ({ one }) => ({
+    task: one(taskTable, {
+      fields: [taskAssigneeTable.taskId],
+      references: [taskTable.id],
+    }),
+    user: one(userTable, {
+      fields: [taskAssigneeTable.userId],
+      references: [userTable.id],
+    }),
+  }),
+);
 
 export const timeEntryTableRelations = relations(timeEntryTable, ({ one }) => ({
   task: one(taskTable, {

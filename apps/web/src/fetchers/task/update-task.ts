@@ -12,6 +12,7 @@ async function updateTask(taskId: string, task: Task) {
     param: { id: taskId },
     json: {
       userId: task.userId || "",
+      ...(task.userIds ? { userIds: task.userIds } : {}),
       title: task.title,
       description: task.descriptionDeferred
         ? undefined

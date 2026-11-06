@@ -7,6 +7,7 @@ import {
   taskTable,
   userTable,
 } from "../../database/schema";
+import { loadTaskAssigneesMap } from "../task-assignees";
 
 async function exportTasks(projectId: string) {
   const project = await db.query.projectTable.findFirst({
@@ -41,6 +42,7 @@ async function exportTasks(projectId: string) {
     .orderBy(taskTable.position);
 
   const taskIds = tasks.map((task) => task.id);
+  const assigneesMap = await loadTaskAssigneesMap(db, tasks);
 
   const labelsData =
     taskIds.length > 0
@@ -86,6 +88,7 @@ async function exportTasks(projectId: string) {
       dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null,
       startDate: task.startDate ? new Date(task.startDate).toISOString() : null,
       userId: task.userId || null,
+      userIds: (assigneesMap.get(task.id) ?? []).map((assignee) => assignee.id),
       labels: taskLabelsMap.get(task.id) || [],
     })),
   };
