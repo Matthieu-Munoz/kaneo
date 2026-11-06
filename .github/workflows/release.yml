@@ -30,6 +30,7 @@ permissions: {}
 
 jobs:
   plan:
+    if: github.repository == 'usekaneo/kaneo'
     name: Plan
     timeout-minutes: 15
     runs-on: blacksmith-4vcpu-ubuntu-2404

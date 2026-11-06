@@ -26,6 +26,7 @@ env:
 
 jobs:
   check:
+    if: github.repository == 'usekaneo/kaneo'
     name: Check and bundle
     runs-on: ubuntu-26.04
     permissions:
@@ -314,7 +315,7 @@ jobs:
   npm:
     name: Publish to npm
     needs: check
-    if: vars.CLI_NPM_PUBLISH == 'true'
+    if: github.repository == 'usekaneo/kaneo' && vars.CLI_NPM_PUBLISH == 'true'
     runs-on: ubuntu-26.04
     permissions:
       contents: read
