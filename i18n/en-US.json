@@ -3230,7 +3230,8 @@
 			},
 			"importedFrom": "Imported from {{source}}",
 			"importedBy": "Imported by {{name}}"
-		}
+		},
+		"removedAssignee": "Removed {{name}} from assignees"
 	},
 	"tasks": {
 		"checklistProgress": "{{completed}} of {{total}} checklist items completed",

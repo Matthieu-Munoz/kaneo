@@ -3230,7 +3230,8 @@
 			"importedBy": "Imported by {{name}}",
 			"commentedOnForge": "σχολίασε στο {{forge}}"
 		},
-		"movedFromOtherProject": "moved task from another project to \"{{to}}\""
+		"movedFromOtherProject": "moved task from another project to \"{{to}}\"",
+		"removedAssignee": "Ο/Η {{name}} αφαιρέθηκε από τους υπεύθυνους"
 	},
 	"tasks": {
 		"title": "Εργασίες",

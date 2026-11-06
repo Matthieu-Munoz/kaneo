@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { OptionMenu } from "@/components/common/option-menu/option-menu";
 import {
   Popover,
   PopoverContent,
@@ -16,7 +15,7 @@ import {
 } from "@/lib/resolve-task-assignees";
 import { toast } from "@/lib/toast";
 import type Task from "@/types/task";
-import { assigneeMenuOptions } from "./menus/assignee-menu-options";
+import { AssigneeOptionsMenu } from "./menus/assignee-options-menu";
 
 type SubtaskAssigneePopoverProps = {
   tasks: Task[];
@@ -31,7 +30,8 @@ export default function SubtaskAssigneePopover({
 }: SubtaskAssigneePopoverProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const { mutateAsync: updateTaskAssignee } = useUpdateTaskAssignee();
+  const { mutateAsync: updateTaskAssignee, isPending } =
+    useUpdateTaskAssignee();
   const { data: members = [] } = useGetMembersOfProjects({
     workspaceId,
     projectIds: tasks.map((task) => task.projectId),
@@ -60,17 +60,21 @@ export default function SubtaskAssigneePopover({
   const firstTaskIds = tasks[0]
     ? (idsByTask[tasks[0].id] ?? getTaskAssigneeIds(tasks[0]))
     : [];
-  const current = tasks.every((task) => {
-    const ids = idsByTask[task.id] ?? getTaskAssigneeIds(task);
-    return (
-      ids.length === firstTaskIds.length &&
-      ids.every((id, index) => id === firstTaskIds[index])
-    );
-  })
-    ? firstTaskIds
-    : undefined;
+  const common = firstTaskIds.filter((id) =>
+    tasks.every((task) =>
+      (idsByTask[task.id] ?? getTaskAssigneeIds(task)).includes(id),
+    ),
+  );
+  const current =
+    common.length > 0 ||
+    tasks.every(
+      (task) => (idsByTask[task.id] ?? getTaskAssigneeIds(task)).length === 0,
+    )
+      ? common
+      : undefined;
 
   const changeAssignee = async (userId: string) => {
+    if (isPending) return;
     if (!userId) {
       setOpen(false);
     }
@@ -82,6 +86,7 @@ export default function SubtaskAssigneePopover({
           pendingByTaskRef.current[task.id] ?? getTaskAssigneeIds(task)
         ).includes(userId),
       );
+    const assigneeMode = userId ? (allHaveUser ? "remove" : "add") : "set";
     const nextMap: Record<string, string[]> = { ...previousMap };
     for (const task of tasks) {
       const currentIds = previousMap[task.id] ?? getTaskAssigneeIds(task);
@@ -89,7 +94,9 @@ export default function SubtaskAssigneePopover({
         ? []
         : allHaveUser
           ? currentIds.filter((id) => id !== userId)
-          : toggleTaskAssigneeId(currentIds, userId);
+          : currentIds.includes(userId)
+            ? currentIds
+            : toggleTaskAssigneeId(currentIds, userId);
     }
     pendingByTaskRef.current = nextMap;
     setIdsByTask(nextMap);
@@ -104,8 +111,10 @@ export default function SubtaskAssigneePopover({
           );
           return updateTaskAssignee({
             ...task,
-            userId: nextUserIds[0] ?? "",
+            userId,
+            assigneeMode,
             userIds: nextUserIds,
+            assigneeIds: nextUserIds,
             assignees: nextAssignees,
           });
         }),
@@ -125,15 +134,11 @@ export default function SubtaskAssigneePopover({
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent className="w-60 p-0" align="start">
-        <OptionMenu
-          label={t("tasks:assignee.label")}
-          placeholder={t("tasks:bulk.assigneePlaceholder")}
-          options={assigneeMenuOptions(
-            members,
-            current,
-            t("tasks:popover.assignee.unassigned"),
-          )}
+        <AssigneeOptionsMenu
+          members={members}
+          current={current}
           onSelect={changeAssignee}
+          disabled={isPending}
         />
       </PopoverContent>
     </Popover>

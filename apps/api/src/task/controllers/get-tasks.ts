@@ -7,7 +7,6 @@ import {
   gte,
   inArray,
   lte,
-  or,
   type SQL,
   type SQLWrapper,
   sql,
@@ -32,7 +31,7 @@ import {
   descriptionDeferred,
   projectDescriptionDeferred,
 } from "../description-pages";
-import { loadTaskAssigneesMap } from "../task-assignees";
+import { hasTaskAssignee, loadTaskAssigneesMap } from "../task-assignees";
 import { taskIsCompleted } from "../task-is-completed";
 import { getSubtaskCounts } from "../get-subtask-counts";
 
@@ -132,16 +131,7 @@ async function getTasksPage(
   }
 
   if (options.assigneeId) {
-    const assigneeCondition = or(
-      eq(taskTable.userId, options.assigneeId),
-      inArray(
-        taskTable.id,
-        db
-          .select({ taskId: taskAssigneeTable.taskId })
-          .from(taskAssigneeTable)
-          .where(eq(taskAssigneeTable.userId, options.assigneeId)),
-      ),
-    );
+    const assigneeCondition = hasTaskAssignee(options.assigneeId);
     if (assigneeCondition) {
       conditions.push(assigneeCondition);
     }

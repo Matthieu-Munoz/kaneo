@@ -8,7 +8,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -38,6 +38,7 @@ import { getPriorityLabel } from "@/lib/i18n/domain";
 import { getPriorityIcon } from "@/lib/priority";
 import {
   getTaskAssigneeIds,
+  resolveTaskAssignees,
   toggleTaskAssigneeId,
 } from "@/lib/resolve-task-assignees";
 import { getTaskPath } from "@/lib/task-link";
@@ -99,6 +100,17 @@ export default function TaskCardContextMenuContent({
   const canEdit = canUpdateTasks();
   const canDelete = canDeleteTasks();
   const canAssign = canAssignTasks();
+  const propAssigneeIds = getTaskAssigneeIds(task);
+  const propAssigneeKey = propAssigneeIds.join(",");
+  const [selectedAssigneeIds, setSelectedAssigneeIds] =
+    useState<string[]>(propAssigneeIds);
+  const pendingAssigneeIdsRef = useRef<string[]>(propAssigneeIds);
+
+  useEffect(() => {
+    const next = getTaskAssigneeIds(task);
+    pendingAssigneeIdsRef.current = next;
+    setSelectedAssigneeIds(next);
+  }, [propAssigneeKey, task]);
 
   const usersOptions = useMemo(() => {
     return projectMembers?.map((member) => ({
@@ -147,13 +159,34 @@ export default function TaskCardContextMenuContent({
           await updateTaskStatus({ ...task, status: value as string });
           break;
         case "userId": {
-          const currentIds = getTaskAssigneeIds(task);
-          const nextUserIds = toggleTaskAssigneeId(currentIds, value as string);
-          await updateTaskAssignee({
-            ...task,
-            userId: nextUserIds[0] ?? "",
-            userIds: nextUserIds,
-          });
+          const userId = value as string;
+          const previousIds = pendingAssigneeIdsRef.current;
+          const assigneeMode = userId
+            ? previousIds.includes(userId)
+              ? "remove"
+              : "add"
+            : "set";
+          const nextUserIds = toggleTaskAssigneeId(previousIds, userId);
+          pendingAssigneeIdsRef.current = nextUserIds;
+          setSelectedAssigneeIds(nextUserIds);
+          const nextAssignees = resolveTaskAssignees(
+            { ...task, userId: nextUserIds[0] ?? null, userIds: nextUserIds },
+            projectMembers,
+          );
+          try {
+            await updateTaskAssignee({
+              ...task,
+              userId,
+              assigneeMode,
+              userIds: nextUserIds,
+              assigneeIds: nextUserIds,
+              assignees: nextAssignees,
+            });
+          } catch (error) {
+            pendingAssigneeIdsRef.current = previousIds;
+            setSelectedAssigneeIds(previousIds);
+            throw error;
+          }
           break;
         }
         case "title":
@@ -253,9 +286,9 @@ export default function TaskCardContextMenuContent({
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-48">
             <ContextMenuCheckboxItem
-              checked={getTaskAssigneeIds(task).length === 0}
+              checked={selectedAssigneeIds.length === 0}
               onCheckedChange={() => handleChange("userId", "")}
-              closeOnClick
+              closeOnClick={false}
             >
               <div
                 className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center"
@@ -270,8 +303,9 @@ export default function TaskCardContextMenuContent({
             {usersOptions.map((user) => (
               <ContextMenuCheckboxItem
                 key={user.value}
-                checked={getTaskAssigneeIds(task).includes(user.value ?? "")}
+                checked={selectedAssigneeIds.includes(user.value ?? "")}
                 onCheckedChange={() => handleChange("userId", user.value ?? "")}
+                closeOnClick={false}
               >
                 <Avatar className="h-6 w-6">
                   <AvatarImage src={user.image ?? ""} alt={user.name || ""} />

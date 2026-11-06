@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { OptionMenu } from "@/components/common/option-menu/option-menu";
 import {
   Popover,
   PopoverContent,
@@ -16,7 +15,7 @@ import {
 } from "@/lib/resolve-task-assignees";
 import { toast } from "@/lib/toast";
 import type Task from "@/types/task";
-import { assigneeMenuOptions } from "./menus/assignee-menu-options";
+import { AssigneeOptionsMenu } from "./menus/assignee-options-menu";
 
 type TaskAssigneePopoverProps = {
   task: Task;
@@ -31,7 +30,8 @@ export default function TaskAssigneePopover({
 }: TaskAssigneePopoverProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const { mutateAsync: updateTaskAssignee } = useUpdateTaskAssignee();
+  const { mutateAsync: updateTaskAssignee, isPending } =
+    useUpdateTaskAssignee();
   const { data: members = [] } = useGetProjectMembers({
     workspaceId,
     projectId: task.projectId,
@@ -51,10 +51,16 @@ export default function TaskAssigneePopover({
   if (!canAssignTasks()) return <>{children}</>;
 
   const changeAssignee = async (userId: string) => {
+    if (isPending) return;
     if (!userId) {
       setOpen(false);
     }
     const previousIds = pendingIdsRef.current;
+    const assigneeMode = userId
+      ? previousIds.includes(userId)
+        ? "remove"
+        : "add"
+      : "set";
     const nextUserIds = toggleTaskAssigneeId(previousIds, userId);
     pendingIdsRef.current = nextUserIds;
     setSelectedIds(nextUserIds);
@@ -65,8 +71,10 @@ export default function TaskAssigneePopover({
     try {
       await updateTaskAssignee({
         ...task,
-        userId: nextUserIds[0] ?? "",
+        userId,
+        assigneeMode,
         userIds: nextUserIds,
+        assigneeIds: nextUserIds,
         assignees: nextAssignees,
       });
     } catch (error) {
@@ -84,15 +92,11 @@ export default function TaskAssigneePopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent className="w-60 p-0" align="start">
-        <OptionMenu
-          label={t("tasks:assignee.label")}
-          placeholder={t("tasks:bulk.assigneePlaceholder")}
-          options={assigneeMenuOptions(
-            members,
-            selectedIds,
-            t("tasks:popover.assignee.unassigned"),
-          )}
+        <AssigneeOptionsMenu
+          members={members}
+          current={selectedIds}
           onSelect={changeAssignee}
+          disabled={isPending}
         />
       </PopoverContent>
     </Popover>

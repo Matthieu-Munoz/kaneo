@@ -16,6 +16,7 @@ import useActiveWorkspace from "@/hooks/queries/workspace/use-active-workspace";
 import useGetProjectMembers from "@/hooks/queries/workspace-users/use-get-project-members";
 import { useWorkspacePermission } from "@/hooks/use-workspace-permission";
 import { PriorityGlyph } from "@/components/task-chips/priority-glyph";
+import { getTaskAssigneeIds } from "@/lib/resolve-task-assignees";
 import { type ToastIcon, toast } from "@/lib/toast";
 import useProjectStore from "@/store/project";
 
@@ -50,6 +51,16 @@ export function useBulkActions(
     return Array.from(byName.values());
   }, [workspaceLabels]);
 
+  const selectedTasks = [
+    ...(project?.columns.flatMap((column) => column.tasks) ?? []),
+    ...(project?.plannedTasks ?? []),
+    ...(project?.archivedTasks ?? []),
+  ].filter((task) => selectedTaskIds.has(task.id));
+  const commonAssigneeIds = (
+    selectedTasks[0] ? getTaskAssigneeIds(selectedTasks[0]) : []
+  ).filter((id) =>
+    selectedTasks.every((task) => getTaskAssigneeIds(task).includes(id)),
+  );
   const count = selectedTaskIds.size;
   const taskIds = () => Array.from(selectedTaskIds);
 
@@ -70,6 +81,11 @@ export function useBulkActions(
 
   return {
     count,
+    commonAssigneeIds,
+    assignPending: operations.isAssigning,
+    allUnassigned:
+      selectedTasks.length > 0 &&
+      selectedTasks.every((task) => getTaskAssigneeIds(task).length === 0),
     columns: project?.columns ?? [],
     members,
     labels,
@@ -94,13 +110,25 @@ export function useBulkActions(
           createElement(PriorityGlyph, { priority, className }),
         t("tasks:bulk.updatePriorityError"),
       ),
-    assign: (userId: string) =>
-      run(
-        () => operations.bulkAssign({ taskIds: taskIds(), userId }),
-        t("tasks:bulk.assignSuccess", { count }),
-        UserRoundIcon,
-        t("tasks:bulk.assignError"),
-      ),
+    assign: async (userId: string) => {
+      if (operations.isAssigning) return;
+      try {
+        await operations.bulkAssign({
+          taskIds: taskIds(),
+          userId,
+          mode: !userId
+            ? "set"
+            : commonAssigneeIds.includes(userId)
+              ? "remove"
+              : "add",
+        });
+        toast.success(t("tasks:bulk.assignSuccess", { count }), {
+          icon: UserRoundIcon,
+        });
+      } catch {
+        toast.error(t("tasks:bulk.assignError"));
+      }
+    },
     addLabel: (labelId: string) =>
       run(
         () => operations.bulkAddLabel({ taskIds: taskIds(), labelId }),

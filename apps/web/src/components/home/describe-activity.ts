@@ -30,6 +30,15 @@ export function describeActivity(activity: WorkspaceActivity, t: Translate) {
       return t("activity:created");
     case "unassigned":
       return t("activity:unassigned");
+    case "assignee_removed":
+      if (eventData) {
+        return t("activity:removedAssignee", {
+          name: String(
+            eventData.removedAssignee ?? eventData.removedAssigneeId ?? "",
+          ),
+        });
+      }
+      break;
     case "status_changed":
       if (eventData) {
         return t("activity:changedStatus", {

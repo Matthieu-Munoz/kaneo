@@ -24,6 +24,7 @@ export type ImportTask = {
   dueDate?: string | null;
   userId?: string | null;
   userIds?: string[] | null;
+  assigneeIds?: string[] | null;
 };
 
 async function importTasks(
@@ -44,7 +45,11 @@ async function importTasks(
   const assigneeIds = [
     ...new Set(
       tasksToImport.flatMap((task) =>
-        resolveAssigneeIds({ userId: task.userId, userIds: task.userIds }),
+        resolveAssigneeIds({
+          userId: task.userId,
+          userIds: task.userIds,
+          assigneeIds: task.assigneeIds,
+        }),
       ),
     ),
   ];
@@ -69,6 +74,7 @@ async function importTasks(
     const references = resolveAssigneeIds({
       userId: taskData.userId,
       userIds: taskData.userIds,
+      assigneeIds: taskData.assigneeIds,
     });
     const resolvedAssigneeIds: string[] = [];
     let assigneeError: string | null = null;

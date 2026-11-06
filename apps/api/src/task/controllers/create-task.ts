@@ -62,6 +62,7 @@ async function createTask({
   currentUserId,
   userId,
   userIds,
+  assigneeIds,
   title,
   status,
   startDate,
@@ -76,6 +77,7 @@ async function createTask({
   currentUserId: string;
   userId?: string;
   userIds?: string[];
+  assigneeIds?: string[];
   title: string;
   status: string;
   startDate?: Date;
@@ -90,7 +92,7 @@ async function createTask({
   const resolvedPriority = priority || "no-priority";
   const normalizedCustomFields = deduplicateCustomFields(customFields);
 
-  const resolvedUserIds = resolveAssigneeIds({ userId, userIds });
+  const resolvedUserIds = resolveAssigneeIds({ userId, userIds, assigneeIds });
   const normalizedUserId = resolvedUserIds[0] || undefined;
 
   await assertValidTaskStatus(resolvedStatus, projectId);

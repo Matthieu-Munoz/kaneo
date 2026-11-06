@@ -13,7 +13,12 @@ export function useUpdateTaskAssignee() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (task: Task) => updateTaskAssignee(task.id, task),
+    mutationFn: (
+      task: Task & {
+        assigneeMode?: "set" | "add" | "remove";
+        assigneeIds?: string[];
+      },
+    ) => updateTaskAssignee(task.id, task),
     onMutate: async (variables) => {
       const nextUserIds =
         variables.userIds !== undefined

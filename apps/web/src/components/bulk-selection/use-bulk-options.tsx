@@ -12,7 +12,8 @@ const PRIORITIES = ["urgent", "high", "medium", "low", "no-priority"];
 
 export function useBulkOptions(actions: BulkActions) {
   const { t } = useTranslation();
-  const { columns, members, labels } = actions;
+  const { columns, members, labels, commonAssigneeIds, allUnassigned } =
+    actions;
 
   return useMemo(() => {
     const columnOptions: OptionMenuItem[] = columns.map((column) => ({
@@ -29,9 +30,14 @@ export function useBulkOptions(actions: BulkActions) {
       members.map((member) => ({
         id: member.id,
         name: member.name || t("common:people.someone"),
+        email: member.email,
         image: member.image,
       })),
-      undefined,
+      allUnassigned
+        ? []
+        : commonAssigneeIds.length > 0
+          ? commonAssigneeIds
+          : undefined,
       t("tasks:popover.assignee.unassigned"),
     );
     const labelOptions: OptionMenuItem[] = labels.map((label) => ({
@@ -45,5 +51,5 @@ export function useBulkOptions(actions: BulkActions) {
       ),
     }));
     return { columnOptions, priorityOptions, memberOptions, labelOptions };
-  }, [columns, members, labels, t]);
+  }, [columns, members, labels, commonAssigneeIds, allUnassigned, t]);
 }

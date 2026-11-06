@@ -7,7 +7,6 @@ import {
   inArray,
   isNull,
   ne,
-  or,
   sql,
 } from "drizzle-orm";
 import db from "../../database";
@@ -15,10 +14,10 @@ import {
   columnTable,
   labelTable,
   projectTable,
-  taskAssigneeTable,
   taskTable,
 } from "../../database/schema";
 import { projectAccessCondition } from "../../project-access/project-access-condition";
+import { hasTaskAssignee } from "../task-assignees";
 import { taskIsCompleted } from "../task-is-completed";
 
 // Home and My tasks render this list whole, so it stays one bounded page.
@@ -40,16 +39,7 @@ async function getAssignedTasks(
   const openAndMine = and(
     eq(projectTable.workspaceId, workspaceId),
     isNull(projectTable.archivedAt),
-    or(
-      eq(taskTable.userId, userId),
-      inArray(
-        taskTable.id,
-        db
-          .select({ taskId: taskAssigneeTable.taskId })
-          .from(taskAssigneeTable)
-          .where(eq(taskAssigneeTable.userId, userId)),
-      ),
-    ),
+    hasTaskAssignee(userId),
     ne(taskTable.status, "archived"),
     sql`not coalesce((
       select ${columnTable.isFinal} from ${columnTable}

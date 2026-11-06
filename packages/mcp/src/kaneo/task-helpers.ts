@@ -17,6 +17,7 @@ export type TaskUpdatePatch = {
   dueDate?: string | null;
   userId?: string | null;
   userIds?: string[];
+  assigneeIds?: string[];
 };
 
 /**
@@ -78,23 +79,23 @@ export function buildFullTaskUpdateBody(
 
   // When patch.userId is explicitly null, we set userId to "" so the API clears assignee; the API
   // treats "" as unassigned (userId || null). When patch.userId is undefined, keep existing.userId
-  // unchanged (leave assignee as-is).
-  const userIds =
-    patch.userIds !== undefined
-      ? patch.userIds
-      : patch.userId === undefined && Array.isArray(existing.userIds)
-        ? existing.userIds.filter((v): v is string => typeof v === "string")
-        : undefined;
+  // unchanged on legacy single-assignee servers, or omit it on multi-assignee servers.
+  const hasMultiAssigneePayload =
+    Array.isArray(existing.assignees) || Array.isArray(existing.userIds);
+  const userIds = patch.userIds;
+  const assigneeIds = patch.assigneeIds;
   const userId =
-    patch.userIds !== undefined
-      ? (patch.userIds[0] ?? "")
-      : patch.userId !== undefined
-        ? patch.userId === null
-          ? ""
-          : patch.userId
-        : typeof existing.userId === "string"
-          ? existing.userId
-          : undefined;
+    patch.assigneeIds !== undefined
+      ? undefined
+      : patch.userIds !== undefined
+        ? (patch.userIds[0] ?? "")
+        : patch.userId !== undefined
+          ? patch.userId === null
+            ? ""
+            : patch.userId
+          : !hasMultiAssigneePayload && typeof existing.userId === "string"
+            ? existing.userId
+            : undefined;
 
   const startDate = formatOptionalIso(
     patch.startDate !== undefined ? patch.startDate : existing.startDate,
@@ -123,6 +124,9 @@ export function buildFullTaskUpdateBody(
   }
   if (userIds !== undefined) {
     body.userIds = userIds;
+  }
+  if (assigneeIds !== undefined) {
+    body.assigneeIds = assigneeIds;
   }
 
   return body;
