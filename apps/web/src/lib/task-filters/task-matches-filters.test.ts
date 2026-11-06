@@ -159,4 +159,29 @@ describe("taskMatchesFilters", () => {
       ),
     ).toBe(true);
   });
+
+  it("matches tasks when any of multiple assignees matches the filter", () => {
+    const multiAssignedTask = task({
+      userId: "u1",
+      userIds: ["u1", "u2"],
+      assignees: [
+        { id: "u1", name: "Alice" },
+        { id: "u2", name: "Bob" },
+      ],
+    });
+    expect(
+      taskMatchesFilters(
+        multiAssignedTask,
+        { ...noFilters, assignee: ["u2"] },
+        context,
+      ),
+    ).toBe(true);
+    expect(
+      taskMatchesFilters(
+        multiAssignedTask,
+        { ...noFilters, assignee: ["u3"] },
+        context,
+      ),
+    ).toBe(false);
+  });
 });

@@ -1,6 +1,11 @@
 import { useTranslation } from "react-i18next";
+import { useGetActiveWorkspaceUsers } from "@/hooks/queries/workspace-users/use-get-active-workspace-users";
+import {
+  formatAssigneeNames,
+  resolveTaskAssignees,
+} from "@/lib/resolve-task-assignees";
 import type Task from "@/types/task";
-import { AssigneeAvatar } from "../properties/assignee-avatar";
+import { AssigneeAvatarStack } from "../properties/assignee-avatar-stack";
 import SubtaskAssigneePopover from "../subtask-assignee-popover";
 
 type ReferenceAssigneeButtonProps = {
@@ -17,18 +22,35 @@ export function ReferenceAssigneeButton({
   image,
 }: ReferenceAssigneeButtonProps) {
   const { t } = useTranslation();
-  const assigned = Boolean(tasks[0]?.userId);
+  const { data: workspaceUsers } = useGetActiveWorkspaceUsers(workspaceId);
+  const firstTask = tasks[0];
+  const assignees = resolveTaskAssignees(
+    firstTask
+      ? {
+          ...firstTask,
+          assigneeName: firstTask.assigneeName ?? name ?? null,
+          assigneeImage: firstTask.assigneeImage ?? image ?? null,
+        }
+      : null,
+    workspaceUsers?.members,
+  );
+  const label =
+    assignees.length > 0
+      ? formatAssigneeNames(
+          assignees,
+          name || t("tasks:popover.assignee.unassigned"),
+        )
+      : t("tasks:popover.assignee.unassigned");
 
   return (
     <SubtaskAssigneePopover tasks={tasks} workspaceId={workspaceId}>
       <button
         type="button"
-        aria-label={
-          assigned && name ? name : t("tasks:popover.assignee.unassigned")
-        }
+        aria-label={label}
+        title={label}
         className="relative flex shrink-0 rounded-full outline-none before:absolute before:-inset-1 focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <AssigneeAvatar name={name} image={image} assigned={assigned} />
+        <AssigneeAvatarStack assignees={assignees} />
       </button>
     </SubtaskAssigneePopover>
   );

@@ -255,6 +255,8 @@ export default function TaskRelations({
     createdAt: "",
     updatedAt: "",
     userId: item.task.userId,
+    userIds: item.task.userIds,
+    assignees: item.task.assignees,
     assigneeId: item.task.userId,
     assigneeName: item.task.assigneeName,
     assigneeImage: "",

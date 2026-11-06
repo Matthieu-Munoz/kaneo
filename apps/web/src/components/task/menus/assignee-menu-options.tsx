@@ -12,15 +12,24 @@ type AssignableMember = {
 
 export function assigneeMenuOptions(
   members: AssignableMember[],
-  current: string | null | undefined,
+  current: string | readonly string[] | null | undefined,
   unassignedLabel: string,
 ): OptionMenuItem[] {
+  const selectedIds =
+    current === undefined
+      ? null
+      : Array.isArray(current)
+        ? new Set(current.filter(Boolean))
+        : current
+          ? new Set([current])
+          : new Set<string>();
+
   return [
     {
       value: "",
       label: unassignedLabel,
       icon: <UnassignedAvatar className="size-4 text-[8px]" />,
-      selected: current !== undefined && !current,
+      selected: selectedIds !== null && selectedIds.size === 0,
     },
     ...members.map((member) => ({
       value: member.id,
@@ -33,7 +42,7 @@ export function assigneeMenuOptions(
           </AvatarFallback>
         </Avatar>
       ),
-      selected: member.id === current,
+      selected: selectedIds !== null && selectedIds.has(member.id),
     })),
   ];
 }

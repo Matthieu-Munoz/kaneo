@@ -164,6 +164,12 @@ describe("MCP tool catalog", () => {
 
     await call("update_task_assignee", { taskId: "t1", userId: null });
     expect(lastRequest().body).toEqual({ userId: null });
+
+    await call("update_task_assignee", {
+      taskId: "t1",
+      userIds: ["u1", "u2"],
+    });
+    expect(lastRequest().body).toEqual({ userIds: ["u1", "u2"] });
   });
 
   it("rejects an empty assignee id rather than sending it", async () => {

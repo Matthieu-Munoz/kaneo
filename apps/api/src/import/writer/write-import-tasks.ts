@@ -1,5 +1,9 @@
 import type db from "../../database";
-import { activityTable, taskTable } from "../../database/schema";
+import {
+  activityTable,
+  taskAssigneeTable,
+  taskTable,
+} from "../../database/schema";
 import { chunk } from "./chunk";
 import type { PlannedImportTask } from "./plan-import-tasks";
 
@@ -29,6 +33,20 @@ export async function writeImportTasks(
         userId: task.userId,
       })),
     );
+
+    const assigneeRows = batch
+      .filter((task): task is PlannedImportTask & { userId: string } =>
+        Boolean(task.userId),
+      )
+      .map((task) => ({
+        taskId: task.id,
+        userId: task.userId,
+        createdAt: task.createdAt,
+      }));
+
+    if (assigneeRows.length > 0) {
+      await tx.insert(taskAssigneeTable).values(assigneeRows);
+    }
 
     await tx.insert(activityTable).values(
       batch.map((task) => ({

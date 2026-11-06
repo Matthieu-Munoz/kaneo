@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import db from "../../database";
 import {
   activityTable,
@@ -10,6 +10,7 @@ import { publishEvent } from "../../events";
 import createNotification from "../../notification/controllers/create-notification";
 import { deleteOrphanedAssets } from "../../storage/cleanup-assets";
 import { getSubtaskParentProjects } from "../get-subtask-parent-projects";
+import { areAssigneeListsEqual, diffAssigneeIds } from "../task-assignees";
 import { parseMentionIds } from "../../utils/parse-mentions";
 
 type Task = typeof taskTable.$inferSelect;
@@ -59,6 +60,8 @@ export async function publishTaskMutation(
     skipRelationRefresh?: boolean;
     fields?: Array<keyof Changes>;
     assigneeName?: string | null;
+    beforeUserIds?: string[];
+    afterUserIds?: string[];
     sourceIntegrationId?: string;
   } = {},
 ) {
@@ -114,7 +117,56 @@ export async function publishTaskMutation(
       newPriority: after.priority,
       type: "priority_changed",
     });
-  if (changed("userId")) {
+  if (
+    options.afterUserIds !== undefined &&
+    (!options.fields || options.fields.includes("userId"))
+  ) {
+    const beforeIds =
+      options.beforeUserIds ?? (before.userId ? [before.userId] : []);
+    const afterIds = options.afterUserIds;
+    const { added, removed } = diffAssigneeIds(beforeIds, afterIds);
+
+    if (added.length > 0) {
+      const namesById = new Map<string, string | undefined>();
+      if (added.length === 1 && options.assigneeName !== undefined) {
+        namesById.set(added[0]!, options.assigneeName ?? undefined);
+      } else {
+        const users = await db
+          .select({ id: userTable.id, name: userTable.name })
+          .from(userTable)
+          .where(inArray(userTable.id, added));
+        for (const user of users) {
+          namesById.set(user.id, user.name);
+        }
+      }
+
+      for (const addedId of added) {
+        await publishEvent("task.assignee_changed", {
+          ...common,
+          oldAssignee: before.userId ?? null,
+          newAssignee: namesById.get(addedId),
+          newAssigneeId: addedId,
+          type: "assignee_changed",
+        });
+      }
+    } else if (removed.length > 0) {
+      await publishEvent("task.unassigned", {
+        ...common,
+        oldAssignee: removed[0] ?? before.userId ?? null,
+        newAssignee: undefined,
+        newAssigneeId: after.userId ?? null,
+        type: "unassigned",
+      });
+    } else if (!areAssigneeListsEqual(beforeIds, afterIds)) {
+      await publishEvent("task.updated", {
+        taskId: after.id,
+        projectId: after.projectId,
+        title: after.title,
+        status: after.status ?? "",
+        userId,
+      });
+    }
+  } else if (changed("userId")) {
     const assignee =
       options.assigneeName !== undefined
         ? { name: options.assigneeName ?? undefined }

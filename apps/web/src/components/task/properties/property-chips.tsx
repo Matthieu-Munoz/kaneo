@@ -7,6 +7,7 @@ import { getColumnIcon } from "@/lib/column";
 import { formatDateShort } from "@/lib/format";
 import { getPriorityLabel } from "@/lib/i18n/domain";
 import { getPriorityIcon } from "@/lib/priority";
+import { formatAssigneeNames } from "@/lib/resolve-task-assignees";
 import { TaskCustomFieldChips } from "../custom-fields/task-custom-field-chips";
 import TaskAssigneePopover from "../task-assignee-popover";
 import TaskDueDatePopover from "../task-due-date-popover";
@@ -16,7 +17,7 @@ import TaskPriorityPopover from "../task-priority-popover";
 import { TaskRecurrenceBadge } from "../task-recurrence-badge";
 import TaskStartDatePopover from "../task-start-date-popover";
 import TaskStatusPopover from "../task-status-popover";
-import { AssigneeAvatar } from "./assignee-avatar";
+import { AssigneeAvatarStack } from "./assignee-avatar-stack";
 import { dueDateTextClass } from "./due-date-text-class";
 import { LabelsValue } from "./labels-value";
 import { useTaskProperties } from "./use-task-properties";
@@ -42,8 +43,16 @@ export function PropertyChips({
   className,
 }: PropertyChipsProps) {
   const { t } = useTranslation();
-  const { task, project, labels, status, assignee, dueStatus, canMoveTask } =
-    useTaskProperties(taskId, projectId, workspaceId);
+  const {
+    task,
+    project,
+    labels,
+    status,
+    assignee,
+    assignees,
+    dueStatus,
+    canMoveTask,
+  } = useTaskProperties(taskId, projectId, workspaceId);
 
   if (!task) return null;
 
@@ -79,20 +88,19 @@ export function PropertyChips({
             data-task-action="assignee"
             className={cn(chip, "pl-1.5")}
           >
-            <AssigneeAvatar
-              name={assignee?.user?.name || task.assigneeName}
-              image={assignee?.user?.image}
-              assigned={Boolean(task.userId)}
-            />
+            <AssigneeAvatarStack assignees={assignees} />
             <span
               className={cn(
                 "max-w-32 truncate",
-                !task.userId && "text-muted-foreground",
+                assignees.length === 0 && "text-muted-foreground",
               )}
             >
-              {assignee?.user?.name ||
-                task.assigneeName ||
-                t("tasks:popover.assignee.unassigned")}
+              {formatAssigneeNames(
+                assignees,
+                assignee?.user?.name ||
+                  task.assigneeName ||
+                  t("tasks:popover.assignee.unassigned"),
+              )}
             </span>
           </button>
         </TaskAssigneePopover>

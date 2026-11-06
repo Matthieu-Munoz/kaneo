@@ -9,6 +9,7 @@ import {
 } from "../../database/schema";
 import { publishEvent } from "../../events";
 import createNotification from "../../notification/controllers/create-notification";
+import { getTaskAssigneeIds } from "../../task/task-assignees";
 import { parseMentionIds } from "../../utils/parse-mentions";
 
 async function createComment(
@@ -80,24 +81,25 @@ async function createComment(
     });
   }
 
-  if (
-    task?.assigneeId &&
-    task.assigneeId !== userId &&
-    !mentionedIds.includes(task.assigneeId)
-  ) {
-    await createNotification({
-      userId: task.assigneeId,
-      type: "task_comment",
-      eventData: {
-        taskTitle: task.title,
-        commenterName: user?.name ?? null,
-        commentPreview: content.slice(0, 160),
-        projectId: task.projectId,
-        workspaceId: task.workspaceId,
-      },
-      resourceId: taskId,
-      resourceType: "task",
-    });
+  if (task) {
+    const assigneeIds = await getTaskAssigneeIds(db, taskId, task.assigneeId);
+    for (const assigneeId of assigneeIds) {
+      if (assigneeId !== userId && !mentionedIds.includes(assigneeId)) {
+        await createNotification({
+          userId: assigneeId,
+          type: "task_comment",
+          eventData: {
+            taskTitle: task.title,
+            commenterName: user?.name ?? null,
+            commentPreview: content.slice(0, 160),
+            projectId: task.projectId,
+            workspaceId: task.workspaceId,
+          },
+          resourceId: taskId,
+          resourceType: "task",
+        });
+      }
+    }
   }
 
   return activity;

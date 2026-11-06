@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogClose, DialogPopup } from "@/components/ui/dialog";
 import { usePublicTaskDescription } from "@/hooks/queries/task/use-public-task-description";
 import {
@@ -19,11 +18,11 @@ import {
   isTaskCompleted,
 } from "@/lib/due-date-status";
 import { formatDateMedium, formatDateShort } from "@/lib/format";
-import { getInitials } from "@/lib/get-initials";
 import { getPriorityIcon } from "@/lib/priority";
 import type { ExternalLink } from "@/types/external-link";
 import type Task from "@/types/task";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { PublicTaskAssignees } from "./public-task-assignees";
 import { PublicTaskLabels } from "./public-task-labels";
 
 type PublicTaskDetailModalProps = {
@@ -158,20 +157,7 @@ export function PublicTaskDetailModal({
                   </div>
                 )}
 
-                {task.assigneeName && (
-                  <div className="flex items-center gap-2 px-2.5 py-1 text-xs bg-muted text-muted-foreground rounded-md">
-                    <Avatar className="h-4 w-4">
-                      <AvatarImage
-                        src={task.assigneeImage ?? ""}
-                        alt={task.assigneeName ?? ""}
-                      />
-                      <AvatarFallback className="text-[10px]">
-                        {getInitials(task.assigneeName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span>{task.assigneeName}</span>
-                  </div>
-                )}
+                <PublicTaskAssignees task={task} variant="detail" />
               </div>
             </div>
 

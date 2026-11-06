@@ -278,6 +278,18 @@
               "null"
             ]
           },
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskAssignee"
+            }
+          },
           "projectId": {
             "type": "string"
           },
@@ -374,6 +386,30 @@
           "timeZone"
         ],
         "description": "When a task with this rule moves into a final column, the next task is created with its dates moved forward by one interval from the completed task's due date."
+      },
+      "TaskAssignee": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
       },
       "TaskLabel": {
         "type": "object",
@@ -1278,7 +1314,21 @@
               "string",
               "null"
             ],
-            "description": "The assignee, if any."
+            "description": "The primary assignee, if any."
+          },
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "All assignee user IDs, if loaded."
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskAssignee"
+            },
+            "description": "All assignees, if loaded."
           },
           "title": {
             "type": "string"
@@ -1449,6 +1499,12 @@
                   "string",
                   "null"
                 ]
+              },
+              "assigneeImage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -1557,6 +1613,12 @@
               "string",
               "null"
             ]
+          },
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "labels": {
             "type": "array",
@@ -4115,6 +4177,18 @@
               "string",
               "null"
             ]
+          },
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskAssignee"
+            }
           }
         },
         "required": [
@@ -12276,6 +12350,8 @@
                       "updateStatus",
                       "updatePriority",
                       "updateAssignee",
+                      "addAssignee",
+                      "removeAssignee",
                       "delete",
                       "addLabel",
                       "removeLabel",
@@ -12835,6 +12911,14 @@
                     "type": "string",
                     "description": "Assignee, if any."
                   },
+                  "userIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "description": "Assignee user IDs, if any. Takes precedence over `userId` when provided."
+                  },
                   "recurrence": {
                     "allOf": [
                       {
@@ -13296,6 +13380,14 @@
                   },
                   "userId": {
                     "type": "string"
+                  },
+                  "userIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "description": "Assignee user IDs, if any. Takes precedence over `userId` when provided."
                   }
                 },
                 "required": [
@@ -13672,6 +13764,14 @@
                             "null"
                           ],
                           "description": "Assignable user's ID or email address. Emails match case-insensitively. Null, empty, or omitted leaves the task unassigned."
+                        },
+                        "userIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 50,
+                          "description": "Assignable users' IDs or email addresses. Takes precedence over `userId` when provided."
                         }
                       },
                       "required": [
@@ -13969,11 +14069,16 @@
                       "null"
                     ],
                     "description": "Null unassigns."
+                  },
+                  "userIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "description": "Full list of assignee user IDs; an empty array unassigns all. Takes precedence over `userId` when provided."
                   }
-                },
-                "required": [
-                  "userId"
-                ]
+                }
               }
             }
           }

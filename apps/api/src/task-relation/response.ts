@@ -1,4 +1,5 @@
 import { responseTimestamp, z } from "../openapi";
+import { taskAssigneeSchema } from "../task/response";
 
 const relationTypeDescription =
   "How the two tasks relate: `subtask`, `blocks`, or `related`.";
@@ -16,6 +17,8 @@ const relatedTaskSchema = z
     projectId: z.string(),
     userId: z.string().nullable(),
     assigneeName: z.string().nullable(),
+    userIds: z.array(z.string()).optional(),
+    assignees: z.array(taskAssigneeSchema).optional(),
   })
   .openapi("RelatedTask");
 

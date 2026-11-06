@@ -13,6 +13,7 @@ import {
 import { publishEvent } from "../../events";
 import { assertProjectAccess } from "../../project-access/assert-project-access";
 import { filterUsersWithProjectAccess } from "../../project-access/filter-users-with-project-access";
+import { getTaskAssigneeIds, syncTaskAssignees } from "../task-assignees";
 import { claimTaskNumber } from "./claim-task-numbers";
 import { nextTaskPosition } from "./next-task-position";
 
@@ -168,35 +169,49 @@ async function moveTask({
     }
 
     let movedTask = updatedTask;
-    const assigneeId = updatedTask.userId;
-    if (
-      assigneeId &&
-      !(
-        await filterUsersWithProjectAccess(
-          [assigneeId],
-          destinationProjectId,
-          tx,
-        )
-      ).has(assigneeId)
-    ) {
-      const [unassignedTask] = await tx
-        .update(taskTable)
-        .set({ userId: null })
-        .where(eq(taskTable.id, taskId))
-        .returning();
-      movedTask = unassignedTask ?? { ...updatedTask, userId: null };
-      await createActivities(
-        [
-          {
-            taskId,
-            type: "unassigned",
-            userId: currentUserId,
-            content: null,
-            eventData: {},
-          },
-        ],
+    const currentAssigneeIds = await getTaskAssigneeIds(
+      tx,
+      taskId,
+      updatedTask.userId,
+    );
+    if (currentAssigneeIds.length > 0) {
+      const permitted = await filterUsersWithProjectAccess(
+        currentAssigneeIds,
+        destinationProjectId,
         tx,
       );
+      const nextAssigneeIds = currentAssigneeIds.filter((id) =>
+        permitted.has(id),
+      );
+      if (nextAssigneeIds.length !== currentAssigneeIds.length) {
+        const syncResult = await syncTaskAssignees(
+          tx,
+          taskId,
+          nextAssigneeIds,
+          updatedTask.userId,
+        );
+        const [unassignedTask] = await tx
+          .update(taskTable)
+          .set({ userId: syncResult.primaryUserId })
+          .where(eq(taskTable.id, taskId))
+          .returning();
+        movedTask = unassignedTask ?? {
+          ...updatedTask,
+          userId: syncResult.primaryUserId,
+        };
+        await createActivities(
+          [
+            {
+              taskId,
+              type: "unassigned",
+              userId: currentUserId,
+              content: null,
+              eventData: {},
+            },
+          ],
+          tx,
+        );
+      }
     }
 
     await tx

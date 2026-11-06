@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { OptionMenu } from "@/components/common/option-menu/option-menu";
 import {
@@ -9,6 +9,11 @@ import {
 import { useUpdateTaskAssignee } from "@/hooks/mutations/task/use-update-task-assignee";
 import useGetMembersOfProjects from "@/hooks/queries/workspace-users/use-get-members-of-projects";
 import { useWorkspacePermission } from "@/hooks/use-workspace-permission";
+import {
+  getTaskAssigneeIds,
+  resolveTaskAssignees,
+  toggleTaskAssigneeId,
+} from "@/lib/resolve-task-assignees";
 import { toast } from "@/lib/toast";
 import type Task from "@/types/task";
 import { assigneeMenuOptions } from "./menus/assignee-menu-options";
@@ -32,20 +37,82 @@ export default function SubtaskAssigneePopover({
     projectIds: tasks.map((task) => task.projectId),
   });
   const { canAssignTasks } = useWorkspacePermission();
+  const tasksKey = tasks
+    .map((task) => `${task.id}:${getTaskAssigneeIds(task).join(",")}`)
+    .join("|");
+  const [idsByTask, setIdsByTask] = useState<Record<string, string[]>>(() =>
+    Object.fromEntries(
+      tasks.map((task) => [task.id, getTaskAssigneeIds(task)]),
+    ),
+  );
+  const pendingByTaskRef = useRef<Record<string, string[]>>(idsByTask);
+
+  useEffect(() => {
+    const next = Object.fromEntries(
+      tasks.map((task) => [task.id, getTaskAssigneeIds(task)]),
+    );
+    pendingByTaskRef.current = next;
+    setIdsByTask(next);
+  }, [tasksKey, tasks]);
 
   if (!canAssignTasks()) return <>{children}</>;
 
-  const current = tasks.every((task) => task.userId === tasks[0]?.userId)
-    ? (tasks[0]?.userId ?? null)
+  const firstTaskIds = tasks[0]
+    ? (idsByTask[tasks[0].id] ?? getTaskAssigneeIds(tasks[0]))
+    : [];
+  const current = tasks.every((task) => {
+    const ids = idsByTask[task.id] ?? getTaskAssigneeIds(task);
+    return (
+      ids.length === firstTaskIds.length &&
+      ids.every((id, index) => id === firstTaskIds[index])
+    );
+  })
+    ? firstTaskIds
     : undefined;
 
   const changeAssignee = async (userId: string) => {
-    setOpen(false);
+    if (!userId) {
+      setOpen(false);
+    }
+    const previousMap = { ...pendingByTaskRef.current };
+    const allHaveUser =
+      Boolean(userId) &&
+      tasks.every((task) =>
+        (
+          pendingByTaskRef.current[task.id] ?? getTaskAssigneeIds(task)
+        ).includes(userId),
+      );
+    const nextMap: Record<string, string[]> = { ...previousMap };
+    for (const task of tasks) {
+      const currentIds = previousMap[task.id] ?? getTaskAssigneeIds(task);
+      nextMap[task.id] = !userId
+        ? []
+        : allHaveUser
+          ? currentIds.filter((id) => id !== userId)
+          : toggleTaskAssigneeId(currentIds, userId);
+    }
+    pendingByTaskRef.current = nextMap;
+    setIdsByTask(nextMap);
+
     try {
       await Promise.all(
-        tasks.map((task) => updateTaskAssignee({ ...task, userId })),
+        tasks.map((task) => {
+          const nextUserIds = nextMap[task.id] ?? [];
+          const nextAssignees = resolveTaskAssignees(
+            { ...task, userId: nextUserIds[0] ?? null, userIds: nextUserIds },
+            members,
+          );
+          return updateTaskAssignee({
+            ...task,
+            userId: nextUserIds[0] ?? "",
+            userIds: nextUserIds,
+            assignees: nextAssignees,
+          });
+        }),
       );
     } catch (error) {
+      pendingByTaskRef.current = previousMap;
+      setIdsByTask(previousMap);
       toast.error(
         error instanceof Error
           ? error.message

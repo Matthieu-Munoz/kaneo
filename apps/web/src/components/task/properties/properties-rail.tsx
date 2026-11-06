@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { formatDateShort } from "@/lib/format";
 import { getPriorityLabel } from "@/lib/i18n/domain";
 import { getPriorityIcon } from "@/lib/priority";
+import { formatAssigneeNames } from "@/lib/resolve-task-assignees";
 import { TaskCustomFieldRows } from "../custom-fields/task-custom-field-rows";
 import TaskAssigneePopover from "../task-assignee-popover";
 import TaskDueDatePopover from "../task-due-date-popover";
@@ -15,7 +16,7 @@ import TaskPriorityPopover from "../task-priority-popover";
 import { TaskRecurrenceBadge } from "../task-recurrence-badge";
 import TaskStartDatePopover from "../task-start-date-popover";
 import TaskStatusPopover from "../task-status-popover";
-import { AssigneeAvatar } from "./assignee-avatar";
+import { AssigneeAvatarStack } from "./assignee-avatar-stack";
 import { dueDateTextClass } from "./due-date-text-class";
 import { LabelsValue } from "./labels-value";
 import { PropertyRow } from "./property-row";
@@ -36,8 +37,16 @@ export function PropertiesRail({
   className,
 }: PropertiesRailProps) {
   const { t } = useTranslation();
-  const { task, project, labels, status, assignee, dueStatus, canMoveTask } =
-    useTaskProperties(taskId, projectId, workspaceId);
+  const {
+    task,
+    project,
+    labels,
+    status,
+    assignee,
+    assignees,
+    dueStatus,
+    canMoveTask,
+  } = useTaskProperties(taskId, projectId, workspaceId);
 
   if (!task) return null;
 
@@ -82,20 +91,19 @@ export function PropertiesRail({
         <PropertyRow label={t("tasks:assignee.label")}>
           <TaskAssigneePopover task={task} workspaceId={workspaceId}>
             <PropertyValue data-task-action="assignee" shortcutId="assignTask">
-              <AssigneeAvatar
-                name={assignee?.user?.name || task.assigneeName}
-                image={assignee?.user?.image}
-                assigned={Boolean(task.userId)}
-              />
+              <AssigneeAvatarStack assignees={assignees} />
               <span
                 className={cn(
                   "truncate",
-                  !task.userId && "text-muted-foreground",
+                  assignees.length === 0 && "text-muted-foreground",
                 )}
               >
-                {assignee?.user?.name ||
-                  task.assigneeName ||
-                  t("tasks:popover.assignee.unassigned")}
+                {formatAssigneeNames(
+                  assignees,
+                  assignee?.user?.name ||
+                    task.assigneeName ||
+                    t("tasks:popover.assignee.unassigned"),
+                )}
               </span>
             </PropertyValue>
           </TaskAssigneePopover>

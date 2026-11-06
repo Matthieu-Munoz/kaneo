@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import db, { schema } from "../../apps/api/src/database";
 import { createApp } from "../../apps/api/src/index";
+import deleteAccountData from "../../apps/api/src/user/controllers/delete-account-data";
 import { mockAnonymousSession, mockAuthenticatedSession } from "./helpers/auth";
 import { resetTestDatabase } from "./helpers/database";
 import {
@@ -422,4 +423,228 @@ describe("API integration: task creation", () => {
       expect(persistedTask?.userId).toBeNull();
     },
   );
+
+  it("supports creating, updating, filtering, and listing tasks with multiple assignees", async () => {
+    const owner = await createWorkspaceMember({ role: "owner" });
+    const [secondUser] = await db
+      .insert(schema.userTable)
+      .values({
+        name: "Second Assignee",
+        email: `second-${randomUUID()}@example.com`,
+      })
+      .returning();
+    await db.insert(schema.workspaceUserTable).values({
+      workspaceId: owner.workspace.id,
+      userId: secondUser.id,
+      role: "admin",
+      joinedAt: new Date(),
+    });
+
+    const { project } = await createProjectFixture({
+      workspaceId: owner.workspace.id,
+    });
+
+    mockAuthenticatedSession(owner.user);
+    const { app } = createApp();
+
+    const createRes = await app.request(`/api/task/${project.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Multi-assignee task",
+        description: "Shared responsibility",
+        priority: "high",
+        status: "to-do",
+        userIds: [owner.user.id, secondUser.id],
+      }),
+    });
+
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as {
+      id: string;
+      userId: string | null;
+      userIds: string[];
+      assignees: Array<{ id: string; name: string | null }>;
+    };
+    expect(created.userId).toBe(owner.user.id);
+    expect(created.userIds).toEqual([owner.user.id, secondUser.id]);
+    expect(created.assignees).toEqual([
+      expect.objectContaining({ id: owner.user.id, name: owner.user.name }),
+      expect.objectContaining({ id: secondUser.id, name: secondUser.name }),
+    ]);
+
+    const boardFilterRes = await app.request(
+      `/api/task/tasks/${project.id}?assigneeId=${secondUser.id}`,
+    );
+    expect(boardFilterRes.status).toBe(200);
+    const boardFiltered = (await boardFilterRes.json()) as {
+      data: {
+        columns: Array<{
+          tasks: Array<{
+            id: string;
+            userIds: string[];
+            assignees: Array<{ id: string }>;
+          }>;
+        }>;
+      };
+    };
+    const filteredTasks = boardFiltered.data.columns.flatMap((c) => c.tasks);
+    expect(filteredTasks.map((t) => t.id)).toEqual([created.id]);
+    expect(filteredTasks[0]?.userIds).toEqual([owner.user.id, secondUser.id]);
+
+    mockAuthenticatedSession(secondUser);
+    const assignedRes = await app.request(
+      `/api/task/assigned?workspaceId=${owner.workspace.id}`,
+    );
+    expect(assignedRes.status).toBe(200);
+    const assignedBody = (await assignedRes.json()) as {
+      tasks: Array<{ id: string }>;
+      total: number;
+    };
+    expect(assignedBody.total).toBe(1);
+    expect(assignedBody.tasks.map((t) => t.id)).toEqual([created.id]);
+
+    mockAuthenticatedSession(owner.user);
+    const updateAssigneesRes = await app.request(
+      `/api/task/assignee/${created.id}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userIds: [secondUser.id] }),
+      },
+    );
+    expect(updateAssigneesRes.status).toBe(200);
+    const updated = (await updateAssigneesRes.json()) as {
+      userId: string | null;
+      userIds: string[];
+    };
+    expect(updated.userId).toBe(secondUser.id);
+    expect(updated.userIds).toEqual([secondUser.id]);
+
+    const clearRes = await app.request(`/api/task/assignee/${created.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userIds: [] }),
+    });
+    expect(clearRes.status).toBe(200);
+    const cleared = (await clearRes.json()) as {
+      userId: string | null;
+      userIds: string[];
+    };
+    expect(cleared.userId).toBeNull();
+    expect(cleared.userIds).toEqual([]);
+  });
+
+  it("preserves secondary assignees on legacy full update, supports bulk add/remove, and promotes primary on account deletion", async () => {
+    const owner = await createWorkspaceMember({ role: "owner" });
+    const [secondUser, memberUser] = await db
+      .insert(schema.userTable)
+      .values([
+        {
+          name: "Second Assignee",
+          email: `second-${randomUUID()}@example.com`,
+        },
+        {
+          name: "Regular Member",
+          email: `member-${randomUUID()}@example.com`,
+        },
+      ])
+      .returning();
+
+    await db.insert(schema.workspaceUserTable).values([
+      {
+        workspaceId: owner.workspace.id,
+        userId: secondUser.id,
+        role: "admin",
+        joinedAt: new Date(),
+      },
+      {
+        workspaceId: owner.workspace.id,
+        userId: memberUser.id,
+        role: "member",
+        joinedAt: new Date(),
+      },
+    ]);
+
+    const { project } = await createProjectFixture({
+      workspaceId: owner.workspace.id,
+    });
+
+    mockAuthenticatedSession(owner.user);
+    const { app } = createApp();
+
+    const createRes = await app.request(`/api/task/${project.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Shared task",
+        description: "Initial",
+        priority: "medium",
+        status: "to-do",
+        userIds: [secondUser.id, owner.user.id],
+      }),
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as {
+      id: string;
+      position: number;
+    };
+
+    mockAuthenticatedSession(memberUser);
+    const legacyPutRes = await app.request(`/api/task/${created.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Edited by member",
+        description: "Updated",
+        priority: "high",
+        status: "to-do",
+        projectId: project.id,
+        position: created.position,
+        userId: secondUser.id,
+      }),
+    });
+    expect(legacyPutRes.status).toBe(200);
+    const legacyPutBody = (await legacyPutRes.json()) as {
+      title: string;
+      userId: string | null;
+      userIds: string[];
+    };
+    expect(legacyPutBody.title).toBe("Edited by member");
+    expect(legacyPutBody.userId).toBe(secondUser.id);
+    expect(legacyPutBody.userIds).toEqual([secondUser.id, owner.user.id]);
+
+    mockAuthenticatedSession(owner.user);
+    const bulkAddRes = await app.request("/api/task/bulk", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        taskIds: [created.id],
+        operation: "addAssignee",
+        value: memberUser.id,
+      }),
+    });
+    expect(bulkAddRes.status).toBe(200);
+
+    const bulkRemoveRes = await app.request("/api/task/bulk", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        taskIds: [created.id],
+        operation: "removeAssignee",
+        value: memberUser.id,
+      }),
+    });
+    expect(bulkRemoveRes.status).toBe(200);
+
+    await deleteAccountData(secondUser.id);
+    await db
+      .delete(schema.userTable)
+      .where(eq(schema.userTable.id, secondUser.id));
+
+    const persistedAfterDelete = await db.query.taskTable.findFirst({
+      where: eq(schema.taskTable.id, created.id),
+    });
+    expect(persistedAfterDelete?.userId).toBe(owner.user.id);
+  });
 });

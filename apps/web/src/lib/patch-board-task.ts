@@ -32,6 +32,40 @@ export function patchBoardTask(
             "userId" in patch
               ? (patch.userId ?? null)
               : (existing?.assigneeId ?? null),
+          assigneeName:
+            "assigneeName" in patch
+              ? (patch.assigneeName ?? null)
+              : "assignees" in patch && patch.assignees
+                ? (patch.assignees[0]?.name ?? null)
+                : "userId" in patch && !patch.userId
+                  ? null
+                  : (existing?.assigneeName ?? null),
+          assigneeImage:
+            "assigneeImage" in patch
+              ? (patch.assigneeImage ?? null)
+              : "assignees" in patch && patch.assignees
+                ? (patch.assignees[0]?.image ?? null)
+                : "userId" in patch && !patch.userId
+                  ? null
+                  : (existing?.assigneeImage ?? null),
+          userIds:
+            "userIds" in patch
+              ? patch.userIds
+              : "assignees" in patch && patch.assignees
+                ? patch.assignees.map((assignee) => assignee.id)
+                : "userId" in patch
+                  ? patch.userId
+                    ? [patch.userId]
+                    : []
+                  : existing?.userIds,
+          assignees:
+            "assignees" in patch
+              ? patch.assignees
+              : "userId" in patch &&
+                  !patch.userId &&
+                  (!("userIds" in patch) || !patch.userIds?.length)
+                ? []
+                : existing?.assignees,
         } as Task)
       : undefined;
   const columns = board.columns.map((column) => ({

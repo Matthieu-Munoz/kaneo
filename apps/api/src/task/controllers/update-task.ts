@@ -8,10 +8,16 @@ import {
   recordTaskMutation,
 } from "./task-mutation-effects";
 import {
-  assertAssignableUser,
+  assertAssignableUsers,
   getProjectWorkspaceId,
 } from "../../utils/assert-assignable-user";
 import { boardDescription, descriptionDeferred } from "../description-pages";
+import {
+  getTaskAssigneeIds,
+  loadTaskAssigneesMap,
+  resolveAssigneeIds,
+  syncTaskAssignees,
+} from "../task-assignees";
 import { assertValidTaskStatus } from "../validate-task-fields";
 import { assertTaskPosition } from "./next-task-position";
 
@@ -27,6 +33,7 @@ async function updateTask(
   position: number,
   userId?: string,
   currentUserId?: string,
+  userIds?: string[],
 ) {
   assertTaskPosition(position);
 
@@ -61,11 +68,22 @@ async function updateTask(
 
   await assertValidTaskStatus(status, projectId);
 
-  const normalizedUserId = userId?.trim() || undefined;
+  const currentAssigneeIds = await getTaskAssigneeIds(
+    db,
+    id,
+    existingTask.userId,
+  );
+  const resolvedUserIds = resolveAssigneeIds(
+    { userId: userId ?? "", userIds },
+    currentAssigneeIds,
+  );
+  const newlyAddedAssigneeIds = resolvedUserIds.filter(
+    (candidate) => !currentAssigneeIds.includes(candidate),
+  );
 
-  if (normalizedUserId && normalizedUserId !== existingTask.userId) {
-    await assertAssignableUser(
-      normalizedUserId,
+  if (newlyAddedAssigneeIds.length > 0) {
+    await assertAssignableUsers(
+      newlyAddedAssigneeIds,
       await getProjectWorkspaceId(projectId),
       projectId,
     );
@@ -80,6 +98,8 @@ async function updateTask(
 
   const initialPosition = existingTask.position;
   const initialStatus = existingTask.status;
+  let beforeUserIds = currentAssigneeIds;
+  let afterUserIds = resolvedUserIds;
   const updatedTask = await db.transaction(async (tx) => {
     const [project] = await tx
       .select({ id: projectTable.id })
@@ -115,6 +135,20 @@ async function updateTask(
       });
     existingTask = locked;
 
+    const lockedCurrentIds = await getTaskAssigneeIds(tx, id, locked.userId);
+    const targetUserIds = resolveAssigneeIds(
+      { userId: userId ?? "", userIds },
+      lockedCurrentIds,
+    );
+    const syncResult = await syncTaskAssignees(
+      tx,
+      id,
+      targetUserIds,
+      locked.userId,
+    );
+    beforeUserIds = syncResult.beforeIds;
+    afterUserIds = syncResult.afterIds;
+
     const [task] = await tx
       .update(taskTable)
       .set({
@@ -127,7 +161,7 @@ async function updateTask(
         description,
         priority,
         position,
-        userId: normalizedUserId ?? null,
+        userId: syncResult.primaryUserId,
       })
       .where(and(eq(taskTable.id, id), eq(taskTable.projectId, projectId)))
       .returning({
@@ -159,6 +193,10 @@ async function updateTask(
     },
     { ...updatedTask, description: description ?? updatedTask.description },
     currentUserId,
+    {
+      beforeUserIds,
+      afterUserIds,
+    },
   );
 
   await publishEvent("task.updated", {
@@ -169,7 +207,17 @@ async function updateTask(
     userId: currentUserId,
   });
 
-  return updatedTask;
+  const assigneesMap =
+    afterUserIds.length > 0
+      ? await loadTaskAssigneesMap(db, [updatedTask])
+      : null;
+  const assignees = assigneesMap?.get(updatedTask.id) ?? [];
+
+  return {
+    ...updatedTask,
+    userIds: afterUserIds,
+    assignees,
+  };
 }
 
 export default updateTask;

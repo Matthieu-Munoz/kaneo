@@ -2,16 +2,25 @@ import { client } from "@kaneo/libs";
 import { HttpError } from "@/lib/http-error";
 import type Task from "@/types/task";
 
-type UpdateTaskAssigneePayload = Pick<Task, "userId">;
+type UpdateTaskAssigneePayload = Pick<Task, "userId"> & {
+  userIds?: string[];
+};
 
 async function updateTaskAssignee(
   taskId: string,
   task: UpdateTaskAssigneePayload,
 ) {
+  const userIds =
+    task.userIds !== undefined
+      ? task.userIds.filter(Boolean)
+      : task.userId
+        ? [task.userId]
+        : [];
   const response = await client.task.assignee[":id"].$put({
     param: { id: taskId },
     json: {
-      userId: task.userId || "",
+      userId: userIds[0] ?? "",
+      userIds,
     },
   });
 

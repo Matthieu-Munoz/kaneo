@@ -505,9 +505,14 @@ function RouteComponent() {
                               <p className="w-full truncate text-[11px] leading-tight text-muted-foreground">
                                 {format(task.scheduleStart, "MMM d, yyyy")} -{" "}
                                 {format(task.scheduleEnd, "MMM d, yyyy")}
-                                {task.assigneeName
-                                  ? ` • ${task.assigneeName}`
-                                  : ""}
+                                {task.assignees && task.assignees.length > 0
+                                  ? ` • ${task.assignees
+                                      .map((assignee) => assignee.name)
+                                      .filter(Boolean)
+                                      .join(", ")}`
+                                  : task.assigneeName
+                                    ? ` • ${task.assigneeName}`
+                                    : ""}
                               </p>
                             </button>
                             {(task.scheduleEnd < timeline.rangeStart ||

@@ -13,6 +13,10 @@ import {
 } from "@/components/ui/preview-card";
 import getProject from "@/fetchers/project/get-project";
 import getTask from "@/fetchers/task/get-task";
+import {
+  formatAssigneeNames,
+  resolveTaskAssignees,
+} from "@/lib/resolve-task-assignees";
 
 function parseTaskRouteFromUrl(url: string) {
   try {
@@ -72,7 +76,10 @@ function KaneoIssueLinkView({ node }: NodeViewProps) {
   const priority = task?.priority
     ? t(`tasks:priority.${task.priority}`)
     : t("tasks:priority.no-priority");
-  const assignee = task?.assigneeName || t("tasks:assignee.unassigned");
+  const assignee = formatAssigneeNames(
+    resolveTaskAssignees(task),
+    task?.assigneeName || t("tasks:assignee.unassigned"),
+  );
   const resolvedHref =
     taskRoute?.workspaceId && taskRoute?.projectId && task?.id
       ? `/dashboard/workspace/${taskRoute.workspaceId}/project/${taskRoute.projectId}/task/${task.id}`

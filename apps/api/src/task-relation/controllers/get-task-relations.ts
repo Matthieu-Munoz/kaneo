@@ -7,6 +7,10 @@ import {
   userTable,
 } from "../../database/schema";
 import { projectAccessCondition } from "../../project-access/project-access-condition";
+import {
+  loadTaskAssigneesMap,
+  type TaskAssigneeItem,
+} from "../../task/task-assignees";
 import { taskIsCompleted } from "../../task/task-is-completed";
 
 async function getTaskRelations(
@@ -48,6 +52,8 @@ async function getTaskRelations(
       projectId: string;
       userId: string | null;
       assigneeName: string | null;
+      userIds: string[];
+      assignees: TaskAssigneeItem[];
     }
   >();
 
@@ -75,8 +81,15 @@ async function getTaskRelations(
         ),
       );
 
+    const assigneesMap = await loadTaskAssigneesMap(db, taskRows);
+
     for (const task of taskRows) {
-      tasks.set(task.id, task);
+      const assignees = assigneesMap.get(task.id) ?? [];
+      tasks.set(task.id, {
+        ...task,
+        userIds: assignees.map((assignee) => assignee.id),
+        assignees,
+      });
     }
   }
 

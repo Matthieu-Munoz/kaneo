@@ -9,6 +9,7 @@ import {
   type BoardFilters,
   DUE_DATE_FILTER_VALUES,
 } from "@/hooks/use-task-filters";
+import { getTaskAssigneeIds } from "@/lib/resolve-task-assignees";
 import type Task from "@/types/task";
 import { customFieldSubjectId } from "./filter-subject-id";
 
@@ -91,7 +92,13 @@ export function taskMatchesFilters(
     [
       "assignee",
       filters.assignee,
-      () => filters.assignee?.includes(task.userId ?? "") ?? false,
+      () => {
+        const assigneeIds = getTaskAssigneeIds(task);
+        if (assigneeIds.length === 0) {
+          return filters.assignee?.includes("") ?? false;
+        }
+        return assigneeIds.some((id) => filters.assignee?.includes(id));
+      },
     ],
     [
       "dueDate",

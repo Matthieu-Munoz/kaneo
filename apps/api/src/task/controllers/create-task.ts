@@ -19,10 +19,15 @@ import {
 } from "../../custom-field/choice-options";
 import { publishEvent } from "../../events";
 import {
-  assertAssignableUser,
+  assertAssignableUsers,
   getProjectWorkspaceId,
 } from "../../utils/assert-assignable-user";
 import type { TaskRecurrence } from "../recurrence/schema";
+import {
+  resolveAssigneeIds,
+  syncTaskAssignees,
+  type TaskAssigneeItem,
+} from "../task-assignees";
 import {
   assertRequiredCustomFields,
   assertValidTaskStatus,
@@ -56,6 +61,7 @@ async function createTask({
   projectId,
   currentUserId,
   userId,
+  userIds,
   title,
   status,
   startDate,
@@ -69,6 +75,7 @@ async function createTask({
   projectId: string;
   currentUserId: string;
   userId?: string;
+  userIds?: string[];
   title: string;
   status: string;
   startDate?: Date;
@@ -83,7 +90,8 @@ async function createTask({
   const resolvedPriority = priority || "no-priority";
   const normalizedCustomFields = deduplicateCustomFields(customFields);
 
-  const normalizedUserId = userId?.trim() || undefined;
+  const resolvedUserIds = resolveAssigneeIds({ userId, userIds });
+  const normalizedUserId = resolvedUserIds[0] || undefined;
 
   await assertValidTaskStatus(resolvedStatus, projectId);
 
@@ -134,18 +142,34 @@ async function createTask({
   await assertRequiredCustomFields(projectId, mergedCustomFields);
 
   let assignee: { name: string } | undefined;
+  let assignees: TaskAssigneeItem[] = [];
 
-  if (normalizedUserId) {
-    await assertAssignableUser(
-      normalizedUserId,
+  if (resolvedUserIds.length > 0) {
+    await assertAssignableUsers(
+      resolvedUserIds,
       await getProjectWorkspaceId(projectId),
       projectId,
     );
 
-    [assignee] = await db
-      .select({ name: userTable.name })
+    const assigneeRows = await db
+      .select({
+        id: userTable.id,
+        name: userTable.name,
+        image: userTable.image,
+      })
       .from(userTable)
-      .where(eq(userTable.id, normalizedUserId));
+      .where(inArray(userTable.id, resolvedUserIds));
+
+    const byId = new Map(assigneeRows.map((row) => [row.id, row]));
+    assignees = resolvedUserIds
+      .map((id) => byId.get(id))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    if (normalizedUserId) {
+      const primary = byId.get(normalizedUserId);
+      if (primary) {
+        assignee = { name: primary.name };
+      }
+    }
   }
 
   const column = await db.query.columnTable.findFirst({
@@ -225,6 +249,10 @@ async function createTask({
       }
     }
 
+    if (task && resolvedUserIds.length > 0) {
+      await syncTaskAssignees(tx, task.id, resolvedUserIds);
+    }
+
     if (task && mergedCustomFields.length) {
       await tx.insert(customFieldValueTable).values(
         mergedCustomFields.map(({ fieldId, value }) => ({
@@ -248,6 +276,7 @@ async function createTask({
     ...createdTask,
     taskId: createdTask.id,
     userId: createdTask.userId ?? "",
+    userIds: resolvedUserIds,
     currentUserId: currentUserId,
     type: "created",
     content: null,
@@ -255,6 +284,8 @@ async function createTask({
 
   return {
     ...createdTask,
+    userIds: resolvedUserIds,
+    assignees,
     assigneeName: assignee?.name,
   };
 }

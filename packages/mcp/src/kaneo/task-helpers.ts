@@ -16,6 +16,7 @@ export type TaskUpdatePatch = {
   startDate?: string | null;
   dueDate?: string | null;
   userId?: string | null;
+  userIds?: string[];
 };
 
 /**
@@ -24,7 +25,7 @@ export type TaskUpdatePatch = {
 export function buildFullTaskUpdateBody(
   existing: Record<string, unknown>,
   patch: TaskUpdatePatch,
-): Record<string, string | number | undefined> {
+): Record<string, string | number | string[] | undefined> {
   const positionRaw = patch.position ?? existing.position;
   const position =
     typeof positionRaw === "number"
@@ -78,14 +79,22 @@ export function buildFullTaskUpdateBody(
   // When patch.userId is explicitly null, we set userId to "" so the API clears assignee; the API
   // treats "" as unassigned (userId || null). When patch.userId is undefined, keep existing.userId
   // unchanged (leave assignee as-is).
-  const userId =
-    patch.userId !== undefined
-      ? patch.userId === null
-        ? ""
-        : patch.userId
-      : typeof existing.userId === "string"
-        ? existing.userId
+  const userIds =
+    patch.userIds !== undefined
+      ? patch.userIds
+      : patch.userId === undefined && Array.isArray(existing.userIds)
+        ? existing.userIds.filter((v): v is string => typeof v === "string")
         : undefined;
+  const userId =
+    patch.userIds !== undefined
+      ? (patch.userIds[0] ?? "")
+      : patch.userId !== undefined
+        ? patch.userId === null
+          ? ""
+          : patch.userId
+        : typeof existing.userId === "string"
+          ? existing.userId
+          : undefined;
 
   const startDate = formatOptionalIso(
     patch.startDate !== undefined ? patch.startDate : existing.startDate,
@@ -94,7 +103,7 @@ export function buildFullTaskUpdateBody(
     patch.dueDate !== undefined ? patch.dueDate : existing.dueDate,
   );
 
-  const body: Record<string, string | number | undefined> = {
+  const body: Record<string, string | number | string[] | undefined> = {
     title,
     description,
     status,
@@ -111,6 +120,9 @@ export function buildFullTaskUpdateBody(
   }
   if (userId !== undefined) {
     body.userId = userId;
+  }
+  if (userIds !== undefined) {
+    body.userIds = userIds;
   }
 
   return body;

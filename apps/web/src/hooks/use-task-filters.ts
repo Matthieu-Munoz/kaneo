@@ -1,5 +1,6 @@
 import { addWeeks, endOfWeek, isWithinInterval, startOfWeek } from "date-fns";
 import { useEffect, useState } from "react";
+import { getTaskAssigneeIds } from "@/lib/resolve-task-assignees";
 import { useUserPreferencesStore } from "@/store/user-preferences";
 import type { ProjectWithTasks } from "@/types/project";
 import type Task from "@/types/task";
@@ -116,12 +117,15 @@ export function useTaskFilters(
         return false;
       }
 
-      if (
-        filters.assignee &&
-        filters.assignee.length > 0 &&
-        !filters.assignee.includes(task.userId ?? "")
-      ) {
-        return false;
+      if (filters.assignee && filters.assignee.length > 0) {
+        const assigneeIds = getTaskAssigneeIds(task);
+        const matchesAssignee =
+          assigneeIds.length === 0
+            ? filters.assignee.includes("")
+            : assigneeIds.some((id) => filters.assignee?.includes(id));
+        if (!matchesAssignee) {
+          return false;
+        }
       }
 
       if (filters.dueDate && filters.dueDate.length > 0) {

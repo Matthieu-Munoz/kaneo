@@ -3,6 +3,14 @@ import { taskRecurrenceSchema } from "./recurrence/schema";
 
 const priorityDescription = "One of: no-priority, low, medium, high, urgent.";
 
+export const taskAssigneeSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().nullable(),
+    image: z.string().nullable().optional(),
+  })
+  .openapi("TaskAssignee");
+
 export const taskSchema = z
   .object({
     id: z.string(),
@@ -16,7 +24,15 @@ export const taskSchema = z
     userId: z
       .string()
       .nullable()
-      .openapi({ description: "The assignee, if any." }),
+      .openapi({ description: "The primary assignee, if any." }),
+    userIds: z
+      .array(z.string())
+      .optional()
+      .openapi({ description: "All assignee user IDs, if loaded." }),
+    assignees: z
+      .array(taskAssigneeSchema)
+      .optional()
+      .openapi({ description: "All assignees, if loaded." }),
     title: z.string(),
     description: z.string().nullable(),
     descriptionDeferred: z.boolean().optional().openapi({
@@ -61,6 +77,7 @@ export const taskWithAssigneeSchema = taskSchema
       .optional(),
     assigneeName: z.string().nullable(),
     assigneeId: z.string().nullable(),
+    assigneeImage: z.string().nullable().optional(),
   })
   .openapi("TaskWithAssignee");
 
@@ -115,6 +132,8 @@ export const boardTaskSchema = z
     assigneeName: z.string().nullable(),
     assigneeId: z.string().nullable(),
     assigneeImage: z.string().nullable(),
+    userIds: z.array(z.string()).optional(),
+    assignees: z.array(taskAssigneeSchema).optional(),
     projectId: z.string(),
     subtaskCounts: z
       .object({
@@ -221,6 +240,7 @@ export const taskExportSchema = z
           dueDate: z.string().nullable().openapi({ format: "date-time" }),
           startDate: z.string().nullable().openapi({ format: "date-time" }),
           userId: z.string().nullable(),
+          userIds: z.array(z.string()).optional(),
           labels: z
             .array(
               z
