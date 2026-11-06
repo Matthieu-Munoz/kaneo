@@ -8,10 +8,15 @@ import {
   userTable,
   workspaceTable,
 } from "../../database/schema";
+import {
+  loadTaskAssigneesMap,
+  type TaskAssigneeItem,
+} from "../../task/task-assignees";
 import { safeOutboundError } from "../../utils/outbound-request";
 import type {
   PluginContext,
   TaskAssigneeChangedEvent,
+  TaskAssigneeRemovedEvent,
   TaskCommentCreatedEvent,
   TaskCreatedEvent,
   TaskDeletedEvent,
@@ -28,6 +33,7 @@ import type { GenericWebhookConfig, GenericWebhookEventKey } from "./config";
 import { normalizeGenericWebhookConfig } from "./config";
 
 type GenericWebhookTaskData = {
+  assignees?: TaskAssigneeItem[];
   id: string;
   title: string;
   number: number | null;
@@ -58,6 +64,7 @@ async function getTaskData(
       number: taskTable.number,
       status: taskTable.status,
       priority: taskTable.priority,
+      userId: taskTable.userId,
       columnName: columnTable.name,
       projectId: projectTable.id,
       projectName: projectTable.name,
@@ -81,9 +88,12 @@ async function getTaskData(
   }
 
   const clientUrl = process.env.KANEO_CLIENT_URL || "http://localhost:5173";
+  const assignees =
+    (await loadTaskAssigneesMap(db, [taskRow])).get(taskId) ?? [];
 
   return {
     ...taskRow,
+    assignees,
     status: taskRow.status,
     statusName: taskRow.columnName ?? taskRow.status,
     taskUrl: `${clientUrl}/dashboard/workspace/${taskRow.workspaceId}/project/${taskRow.projectId}/task/${taskId}`,
@@ -543,6 +553,29 @@ export async function handleTaskUnassigned(
     event.userId,
     {
       title: event.title,
+    },
+  );
+}
+
+export async function handleTaskAssigneeRemoved(
+  event: TaskAssigneeRemovedEvent,
+  context: PluginContext,
+): Promise<void> {
+  const config = normalizeGenericWebhookConfig(
+    context.config as GenericWebhookConfig,
+  );
+  if (!isEnabled(config, "taskAssigneeChanged")) return;
+
+  await sendEvent(
+    config,
+    "task.assignee_removed",
+    event.taskId,
+    event.projectId,
+    event.userId,
+    {
+      title: event.title,
+      removedAssigneeId: event.removedAssigneeId,
+      removedAssignee: event.removedAssignee ?? null,
     },
   );
 }

@@ -125,39 +125,62 @@ export async function publishTaskMutation(
       options.beforeUserIds ?? (before.userId ? [before.userId] : []);
     const afterIds = options.afterUserIds;
     const { added, removed } = diffAssigneeIds(beforeIds, afterIds);
-
-    if (added.length > 0) {
-      const namesById = new Map<string, string | undefined>();
-      if (added.length === 1 && options.assigneeName !== undefined) {
-        namesById.set(added[0]!, options.assigneeName ?? undefined);
-      } else {
-        const users = await db
-          .select({ id: userTable.id, name: userTable.name })
-          .from(userTable)
-          .where(inArray(userTable.id, added));
-        for (const user of users) {
-          namesById.set(user.id, user.name);
-        }
+    const lookupIds = Array.from(
+      new Set([
+        ...(added.length === 1 && options.assigneeName !== undefined
+          ? []
+          : added),
+        ...(afterIds.length > 0 ? removed : []),
+      ]),
+    );
+    const namesById = new Map<string, string | undefined>();
+    if (added.length === 1 && options.assigneeName !== undefined) {
+      namesById.set(added[0]!, options.assigneeName ?? undefined);
+    }
+    if (lookupIds.length > 0) {
+      const users = await db
+        .select({ id: userTable.id, name: userTable.name })
+        .from(userTable)
+        .where(inArray(userTable.id, lookupIds));
+      for (const user of users) {
+        namesById.set(user.id, user.name);
       }
+    }
 
-      for (const addedId of added) {
-        await publishEvent("task.assignee_changed", {
+    if (afterIds.length > 0) {
+      for (const removedId of removed) {
+        await publishEvent("task.assignee_removed", {
           ...common,
-          oldAssignee: before.userId ?? null,
-          newAssignee: namesById.get(addedId),
-          newAssigneeId: addedId,
-          type: "assignee_changed",
+          removedAssigneeId: removedId,
+          removedAssignee: namesById.get(removedId) ?? "",
+          type: "assignee_removed",
         });
       }
-    } else if (removed.length > 0) {
+    }
+
+    for (const addedId of added) {
+      await publishEvent("task.assignee_changed", {
+        ...common,
+        oldAssignee: before.userId ?? null,
+        newAssignee: namesById.get(addedId),
+        newAssigneeId: addedId,
+        type: "assignee_changed",
+      });
+    }
+
+    if (beforeIds.length > 0 && afterIds.length === 0) {
       await publishEvent("task.unassigned", {
         ...common,
         oldAssignee: removed[0] ?? before.userId ?? null,
         newAssignee: undefined,
-        newAssigneeId: after.userId ?? null,
+        newAssigneeId: null,
         type: "unassigned",
       });
-    } else if (!areAssigneeListsEqual(beforeIds, afterIds)) {
+    } else if (
+      added.length === 0 &&
+      removed.length === 0 &&
+      !areAssigneeListsEqual(beforeIds, afterIds)
+    ) {
       await publishEvent("task.updated", {
         taskId: after.id,
         projectId: after.projectId,

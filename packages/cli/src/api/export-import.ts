@@ -12,6 +12,7 @@ export const ExportedTask = Schema.Struct({
   startDate: NullableString,
   userId: NullableString,
   userIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  assigneeIds: Schema.optionalKey(Schema.Array(Schema.String)),
   labels: Schema.Array(
     Schema.Struct({ name: Schema.String, color: Schema.String }),
   ),
@@ -38,6 +39,7 @@ export type ImportTaskBody = {
   readonly dueDate?: string | null;
   readonly userId?: string | null;
   readonly userIds?: ReadonlyArray<string>;
+  readonly assigneeIds?: ReadonlyArray<string>;
 };
 
 export const ImportOutcome = Schema.Struct({

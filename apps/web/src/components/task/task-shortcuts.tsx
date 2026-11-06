@@ -77,8 +77,10 @@ export function TaskShortcuts({
           : [...currentIds, user.id];
         await updateAssignee({
           ...task,
-          userId: nextUserIds[0] ?? user.id,
+          userId: user.id,
+          assigneeMode: "add",
           userIds: nextUserIds,
+          assigneeIds: nextUserIds,
         });
         toast.message(t("tasks:shortcuts.assignedToMe"), {
           icon: UserRoundIcon,

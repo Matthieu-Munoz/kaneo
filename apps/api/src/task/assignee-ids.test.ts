@@ -50,6 +50,10 @@ describe("assignee-ids helpers", () => {
         "u2",
         "u3",
       ]);
+      expect(resolveAssigneeIds({ userId: "u1" }, ["u3", "u2"], "u1")).toEqual([
+        "u3",
+        "u2",
+      ]);
       expect(resolveAssigneeIds({ userId: "u9" }, ["u1", "u2"])).toEqual([
         "u9",
       ]);

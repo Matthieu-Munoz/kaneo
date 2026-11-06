@@ -1,6 +1,6 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, or, type SQLWrapper, sql } from "drizzle-orm";
 import type db from "../database";
-import { taskAssigneeTable, userTable } from "../database/schema";
+import { taskAssigneeTable, taskTable, userTable } from "../database/schema";
 import {
   areAssigneeListsEqual,
   diffAssigneeIds,
@@ -21,6 +21,13 @@ export {
 
 type SelectDb = Pick<typeof db, "select">;
 type WriteDb = Pick<typeof db, "select" | "insert" | "delete">;
+
+export function hasTaskAssignee(userId: string | SQLWrapper) {
+  return or(
+    eq(taskTable.userId, userId),
+    sql`exists (select 1 from ${taskAssigneeTable} where ${taskAssigneeTable.taskId} = ${taskTable.id} and ${taskAssigneeTable.userId} = ${userId})`,
+  );
+}
 
 export async function getTaskAssigneeIds(
   database: SelectDb,
@@ -105,6 +112,19 @@ export async function loadTaskAssigneesMap(
 ): Promise<Map<string, TaskAssigneeItem[]>> {
   const map = new Map<string, TaskAssigneeItem[]>();
   if (tasks.length === 0) {
+    return map;
+  }
+
+  if (tasks.length > 500) {
+    for (let offset = 0; offset < tasks.length; offset += 500) {
+      const chunkMap = await loadTaskAssigneesMap(
+        database,
+        tasks.slice(offset, offset + 500),
+      );
+      for (const [taskId, assignees] of chunkMap) {
+        map.set(taskId, assignees);
+      }
+    }
     return map;
   }
 

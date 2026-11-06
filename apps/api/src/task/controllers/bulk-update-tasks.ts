@@ -72,6 +72,11 @@ async function mutateBulkTaskAssignees(
     for (const task of locked) {
       const currentIds = await getTaskAssigneeIds(tx, task.id, task.userId);
       const nextIds = computeNextIds(currentIds);
+      if (nextIds.length > 100) {
+        throw new HTTPException(400, {
+          message: "A task can have at most 100 assignees",
+        });
+      }
       const syncResult = await syncTaskAssignees(
         tx,
         task.id,
@@ -103,12 +108,20 @@ async function bulkUpdateTasks({
   operation,
   value,
   userId,
+  assigneeMode,
 }: {
   taskIds: string[];
   operation: BulkOperation;
   value?: string | null;
   userId: string;
+  assigneeMode?: "set" | "add" | "remove";
 }) {
+  const effectiveOperation: BulkOperation =
+    operation === "updateAssignee" && assigneeMode === "add"
+      ? "addAssignee"
+      : operation === "updateAssignee" && assigneeMode === "remove"
+        ? "removeAssignee"
+        : operation;
   const tasks = await db
     .select({
       id: taskTable.id,
@@ -166,7 +179,7 @@ async function bulkUpdateTasks({
   const foundIds = tasks.map((t) => t.id);
   let updatedCount = 0;
 
-  switch (operation) {
+  switch (effectiveOperation) {
     case "updateStatus": {
       if (!value) {
         throw new HTTPException(400, { message: "Status value is required" });

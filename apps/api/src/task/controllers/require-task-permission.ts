@@ -94,7 +94,45 @@ export async function requireBulkTaskEntitlement(c: Context, next: Next) {
 
 export async function requireTaskAssigneePermission(c: Context, next: Next) {
   const id = c.req.param("id");
-  const { userId, userIds } = await readJsonBody(c);
+  const { userId, userIds, assigneeIds } = await readJsonBody(c);
+  const candidateList = Array.isArray(assigneeIds)
+    ? assigneeIds
+    : Array.isArray(userIds)
+      ? userIds
+      : undefined;
+  if (candidateList) {
+    const rawList = candidateList.filter(
+      (item): item is string => typeof item === "string",
+    );
+    const [existingTask] = await db
+      .select({ userId: taskTable.userId })
+      .from(taskTable)
+      .where(eq(taskTable.id, id ?? ""))
+      .limit(1);
+    if (!existingTask) {
+      return requireWorkspacePermission({ task: ["assign"] })(c, next);
+    }
+    const currentAssigneeIds = await getTaskAssigneeIds(
+      db,
+      id ?? "",
+      existingTask.userId,
+    );
+    const nextAssigneeIds = resolveAssigneeIds(
+      { userIds: rawList },
+      currentAssigneeIds,
+    );
+    if (
+      Array.isArray(assigneeIds) ||
+      !areAssigneeListsEqual(currentAssigneeIds, nextAssigneeIds)
+    ) {
+      return requireWorkspacePermission({ task: ["assign"] })(c, next);
+    }
+    return next();
+  }
+
+  if (userId === undefined) {
+    return next();
+  }
 
   const [existingTask] = await db
     .select({ userId: taskTable.userId })
@@ -113,12 +151,15 @@ export async function requireTaskAssigneePermission(c: Context, next: Next) {
   );
   const nextAssigneeIds = resolveAssigneeIds(
     {
-      userId: typeof userId === "string" ? userId : "",
-      userIds: Array.isArray(userIds)
-        ? userIds.filter((item): item is string => typeof item === "string")
-        : undefined,
+      userId:
+        typeof userId === "string"
+          ? userId
+          : userId === null
+            ? null
+            : undefined,
     },
     currentAssigneeIds,
+    existingTask.userId,
   );
 
   if (!areAssigneeListsEqual(currentAssigneeIds, nextAssigneeIds)) {

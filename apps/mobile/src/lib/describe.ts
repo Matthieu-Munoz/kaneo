@@ -68,6 +68,13 @@ export function describeActivity(
         ? i18n.t("mobile:notificationText.activity.selfAssigned")
         : i18n.t("mobile:notificationText.activity.assignedTo", { assignee });
     }
+    case "assignee_removed": {
+      const removed =
+        str(data, "removedAssignee") ?? str(data, "removedAssigneeId");
+      return removed
+        ? i18n.t("activity:removedAssignee", { name: removed })
+        : i18n.t("mobile:notificationText.activity.unassigned");
+    }
     case "unassigned":
       return i18n.t("mobile:notificationText.activity.unassigned");
     case "due_date_changed": {

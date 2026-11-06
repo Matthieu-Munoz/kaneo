@@ -3284,7 +3284,8 @@
 			"importedBy": "Importé par {{name}}",
 			"commentedOnForge": "a commenté sur {{forge}}"
 		},
-		"movedFromOtherProject": "a déplacé la tâche depuis un autre projet vers « {{to}} »"
+		"movedFromOtherProject": "a déplacé la tâche depuis un autre projet vers « {{to}} »",
+		"removedAssignee": "{{name}} a été retiré des responsables"
 	},
 	"tasks": {
 		"title": "Tâches",

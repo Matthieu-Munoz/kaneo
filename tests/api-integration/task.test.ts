@@ -3,7 +3,10 @@ import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import db, { schema } from "../../apps/api/src/database";
 import { createApp } from "../../apps/api/src/index";
+import { checkDueDateReminders } from "../../apps/api/src/scheduler/due-date-reminders";
+import { DUE_DATE_DURATION_MS } from "../../apps/api/src/scheduler/reminder-timing";
 import deleteAccountData from "../../apps/api/src/user/controllers/delete-account-data";
+import { handleMemberRemoved } from "../../apps/api/src/workspace-members/handle-member-removed";
 import { mockAnonymousSession, mockAuthenticatedSession } from "./helpers/auth";
 import { resetTestDatabase } from "./helpers/database";
 import {
@@ -609,33 +612,102 @@ describe("API integration: task creation", () => {
       title: string;
       userId: string | null;
       userIds: string[];
+      position: number;
     };
     expect(legacyPutBody.title).toBe("Edited by member");
     expect(legacyPutBody.userId).toBe(secondUser.id);
     expect(legacyPutBody.userIds).toEqual([secondUser.id, owner.user.id]);
 
+    const omittedUserPutRes = await app.request(`/api/task/${created.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Edited without userId",
+        description: "Updated",
+        priority: "high",
+        status: "to-do",
+        projectId: project.id,
+        position: legacyPutBody.position,
+      }),
+    });
+    expect(omittedUserPutRes.status).toBe(200);
+    const omittedUserPutBody = (await omittedUserPutRes.json()) as {
+      title: string;
+      userIds: string[];
+    };
+    expect(omittedUserPutBody.title).toBe("Edited without userId");
+    expect(omittedUserPutBody.userIds).toEqual([secondUser.id, owner.user.id]);
+
     mockAuthenticatedSession(owner.user);
+    const atomicAddRes = await app.request(
+      `/api/task/${created.id}/assignees`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: memberUser.id }),
+      },
+    );
+    expect(atomicAddRes.status).toBe(200);
+    expect(
+      ((await atomicAddRes.json()) as { userIds: string[] }).userIds,
+    ).toEqual([secondUser.id, owner.user.id, memberUser.id]);
+
+    const atomicRemoveRes = await app.request(
+      `/api/task/${created.id}/assignees/${memberUser.id}`,
+      {
+        method: "DELETE",
+      },
+    );
+    expect(atomicRemoveRes.status).toBe(200);
+    expect(
+      ((await atomicRemoveRes.json()) as { userIds: string[] }).userIds,
+    ).toEqual([secondUser.id, owner.user.id]);
+
     const bulkAddRes = await app.request("/api/task/bulk", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         taskIds: [created.id],
-        operation: "addAssignee",
+        operation: "updateAssignee",
+        assigneeMode: "add",
         value: memberUser.id,
       }),
     });
     expect(bulkAddRes.status).toBe(200);
 
-    const bulkRemoveRes = await app.request("/api/task/bulk", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        taskIds: [created.id],
-        operation: "removeAssignee",
-        value: memberUser.id,
-      }),
+    await db
+      .update(schema.taskTable)
+      .set({
+        dueDate: new Date(Date.now() - DUE_DATE_DURATION_MS - 5 * 60_000),
+      })
+      .where(eq(schema.taskTable.id, created.id));
+    await checkDueDateReminders();
+    const overdueNotifications = await db
+      .select()
+      .from(schema.notificationTable)
+      .where(
+        and(
+          eq(schema.notificationTable.resourceId, created.id),
+          eq(schema.notificationTable.type, "task_overdue"),
+        ),
+      );
+    expect(new Set(overdueNotifications.map((n) => n.userId))).toEqual(
+      new Set([secondUser.id, owner.user.id, memberUser.id]),
+    );
+
+    await db
+      .delete(schema.workspaceUserTable)
+      .where(
+        and(
+          eq(schema.workspaceUserTable.workspaceId, owner.workspace.id),
+          eq(schema.workspaceUserTable.userId, memberUser.id),
+        ),
+      );
+    await handleMemberRemoved({
+      workspaceId: owner.workspace.id,
+      userId: memberUser.id,
+      userRole: null,
     });
-    expect(bulkRemoveRes.status).toBe(200);
 
     await deleteAccountData(secondUser.id);
     await db

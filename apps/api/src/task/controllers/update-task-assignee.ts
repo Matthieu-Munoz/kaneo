@@ -20,21 +20,45 @@ async function updateTaskAssignee({
   id,
   userId,
   userIds,
+  assigneeIds,
+  mode = "set",
   currentUserId,
 }: {
   id: string;
   userId?: string | null;
   userIds?: string[] | null;
+  assigneeIds?: string[] | null;
+  mode?: "set" | "add" | "remove";
   currentUserId: string;
 }) {
-  const nextUserIds = resolveAssigneeIds({ userId, userIds });
+  const requestedIds = resolveAssigneeIds({ userId, userIds, assigneeIds });
 
   const {
     before: existingTask,
-    after: { task: updatedTask, beforeIds, afterIds },
+    after: { task: updatedTask, beforeIds, afterIds, changed },
   } = await withLockedTask(id, async (tx, existingTask) => {
     const currentIds = await getTaskAssigneeIds(tx, id, existingTask.userId);
+    const nextUserIds =
+      mode === "add"
+        ? Array.from(new Set([...currentIds, ...requestedIds]))
+        : mode === "remove"
+          ? currentIds.filter((candidate) => !requestedIds.includes(candidate))
+          : requestedIds;
+    if (nextUserIds.length > 100) {
+      throw new HTTPException(400, {
+        message: "A task can have at most 100 assignees",
+      });
+    }
     const nextPrimaryId = nextUserIds[0] ?? null;
+
+    if (mode !== "remove" && requestedIds.length > 0) {
+      await assertAssignableUsers(
+        requestedIds,
+        await getProjectWorkspaceId(existingTask.projectId, tx),
+        existingTask.projectId,
+        tx,
+      );
+    }
 
     if (
       areAssigneeListsEqual(currentIds, nextUserIds) &&
@@ -44,19 +68,8 @@ async function updateTaskAssignee({
         task: existingTask,
         beforeIds: currentIds,
         afterIds: nextUserIds,
+        changed: false,
       };
-    }
-
-    const newlyAddedIds = nextUserIds.filter(
-      (candidate) => !currentIds.includes(candidate),
-    );
-    if (newlyAddedIds.length > 0) {
-      await assertAssignableUsers(
-        newlyAddedIds,
-        await getProjectWorkspaceId(existingTask.projectId, tx),
-        existingTask.projectId,
-        tx,
-      );
     }
 
     const syncResult = await syncTaskAssignees(
@@ -82,14 +95,17 @@ async function updateTaskAssignee({
       task: updatedTask,
       beforeIds: syncResult.beforeIds,
       afterIds: syncResult.afterIds,
+      changed: true,
     };
   });
 
-  await publishTaskMutation(existingTask, updatedTask, currentUserId, {
-    fields: ["userId"],
-    beforeUserIds: beforeIds,
-    afterUserIds: afterIds,
-  });
+  if (changed) {
+    await publishTaskMutation(existingTask, updatedTask, currentUserId, {
+      fields: ["userId"],
+      beforeUserIds: beforeIds,
+      afterUserIds: afterIds,
+    });
+  }
 
   const assigneesMap =
     afterIds.length > 0 ? await loadTaskAssigneesMap(db, [updatedTask]) : null;

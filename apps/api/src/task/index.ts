@@ -101,6 +101,9 @@ import {
   moveTaskBody,
   projectIdParam,
   reorderTasksBody,
+  addTaskAssigneeBody,
+  taskAssigneeParam,
+  taskAssigneesBody,
   taskParam,
   ticketIdParam,
   ticketIdQuery,
@@ -613,6 +616,84 @@ const updateTaskAssigneeRoute = createRoute({
   },
 });
 
+const setTaskAssigneesRoute = createRoute({
+  method: "put",
+  path: "/{id}/assignees",
+  operationId: "setTaskAssignees",
+  tags: ["Tasks"],
+  summary: "Set task assignees",
+  description:
+    "Change task assignees atomically. Only eligible project members can be added. Existing single-assignee fields remain available for older clients.",
+  middleware: [
+    workspaceAccess.fromTask(),
+    requireWorkspacePermission({ task: ["assign"] }),
+    requireEntitlement,
+  ] as const,
+  request: {
+    params: taskParam,
+    body: {
+      required: true,
+      content: { "application/json": { schema: taskAssigneesBody } },
+    },
+  },
+  responses: {
+    200: jsonResponse("The updated task and its assignees", taskSchema),
+    400: errorResponse("Invalid assignee list"),
+    403: errorResponse("No project access or assignment permission"),
+    404: errorResponse("Task or user not found"),
+  },
+});
+
+const addTaskAssigneesRoute = createRoute({
+  method: "post",
+  path: "/{id}/assignees",
+  operationId: "addTaskAssignees",
+  tags: ["Tasks"],
+  summary: "Add task assignees",
+  description:
+    "Change task assignees atomically. Only eligible project members can be added. Existing single-assignee fields remain available for older clients.",
+  middleware: [
+    workspaceAccess.fromTask(),
+    requireWorkspacePermission({ task: ["assign"] }),
+    requireEntitlement,
+  ] as const,
+  request: {
+    params: taskParam,
+    body: {
+      required: true,
+      content: { "application/json": { schema: addTaskAssigneeBody } },
+    },
+  },
+  responses: {
+    200: jsonResponse("The updated task and its assignees", taskSchema),
+    400: errorResponse("Invalid assignee list"),
+    403: errorResponse("No project access or assignment permission"),
+    404: errorResponse("Task or user not found"),
+  },
+});
+
+const removeTaskAssigneesRoute = createRoute({
+  method: "delete",
+  path: "/{id}/assignees/{userId}",
+  operationId: "removeTaskAssignees",
+  tags: ["Tasks"],
+  summary: "Remove task assignees",
+  description:
+    "Change task assignees atomically. Only eligible project members can be added. Existing single-assignee fields remain available for older clients.",
+  middleware: [
+    workspaceAccess.fromTask(),
+    requireWorkspacePermission({ task: ["assign"] }),
+    requireEntitlement,
+  ] as const,
+  request: { params: taskAssigneeParam },
+  responses: {
+    200: jsonResponse("The updated task and its assignees", taskSchema),
+    400: errorResponse("Invalid assignee list"),
+    403: errorResponse("No project access or assignment permission"),
+    404: errorResponse("Task or user not found"),
+  },
+});
+
 const updateTaskDueDateRoute = createRoute({
   method: "put",
   operationId: "updateTaskDueDate",
@@ -875,7 +956,7 @@ const task = apiRouter<BaseVariables & { workspaceId: string }>()
     return c.json(tasks, 200);
   })
   .openapi(bulkUpdateTasksRoute, async (c) => {
-    const { taskIds, operation, value } = c.req.valid("json");
+    const { taskIds, operation, value, assigneeMode } = c.req.valid("json");
     const userId = c.get("userId");
 
     if (!userId) {
@@ -896,6 +977,7 @@ const task = apiRouter<BaseVariables & { workspaceId: string }>()
       taskIds,
       operation,
       value,
+      assigneeMode,
       userId,
     });
 
@@ -940,6 +1022,7 @@ const task = apiRouter<BaseVariables & { workspaceId: string }>()
       status,
       userId,
       userIds,
+      assigneeIds,
       recurrence,
       customFields,
       draftAssetIds,
@@ -961,6 +1044,7 @@ const task = apiRouter<BaseVariables & { workspaceId: string }>()
       currentUserId: c.get("userId"),
       userId: userId,
       userIds,
+      assigneeIds,
       title,
       description,
       startDate: parsedStartDate,
@@ -1037,6 +1121,7 @@ const task = apiRouter<BaseVariables & { workspaceId: string }>()
       position,
       userId,
       userIds,
+      assigneeIds,
     } = c.req.valid("json");
 
     const currentUserId = c.get("userId");
@@ -1065,6 +1150,7 @@ const task = apiRouter<BaseVariables & { workspaceId: string }>()
       userId,
       currentUserId,
       userIds,
+      assigneeIds,
     );
 
     return c.json(task, 200);
@@ -1111,15 +1197,49 @@ const task = apiRouter<BaseVariables & { workspaceId: string }>()
 
     return c.json(task, 200);
   })
+  .openapi(setTaskAssigneesRoute, async (c) =>
+    c.json(
+      await updateTaskAssignee({
+        id: c.req.valid("param").id,
+        assigneeIds: c.req.valid("json").assigneeIds,
+        mode: "set",
+        currentUserId: c.get("userId"),
+      }),
+      200,
+    ),
+  )
+  .openapi(addTaskAssigneesRoute, async (c) =>
+    c.json(
+      await updateTaskAssignee({
+        id: c.req.valid("param").id,
+        userIds: [c.req.valid("json").userId],
+        mode: "add",
+        currentUserId: c.get("userId"),
+      }),
+      200,
+    ),
+  )
+  .openapi(removeTaskAssigneesRoute, async (c) =>
+    c.json(
+      await updateTaskAssignee({
+        id: c.req.valid("param").id,
+        userIds: [c.req.valid("param").userId],
+        mode: "remove",
+        currentUserId: c.get("userId"),
+      }),
+      200,
+    ),
+  )
   .openapi(updateTaskAssigneeRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const { userId, userIds } = c.req.valid("json");
+    const { userId, userIds, assigneeIds } = c.req.valid("json");
     const currentUserId = c.get("userId");
 
     const task = await updateTaskAssignee({
       id,
       userId,
       userIds,
+      assigneeIds,
       currentUserId,
     });
 

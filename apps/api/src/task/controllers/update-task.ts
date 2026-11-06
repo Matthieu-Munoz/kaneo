@@ -34,6 +34,7 @@ async function updateTask(
   userId?: string,
   currentUserId?: string,
   userIds?: string[],
+  assigneeIds?: string[],
 ) {
   assertTaskPosition(position);
 
@@ -68,14 +69,17 @@ async function updateTask(
 
   await assertValidTaskStatus(status, projectId);
 
+  const preLockPrimaryUserId = existingTask.userId;
   const currentAssigneeIds = await getTaskAssigneeIds(
     db,
     id,
-    existingTask.userId,
+    preLockPrimaryUserId,
   );
+  const explicitUserIds = assigneeIds ?? userIds;
   const resolvedUserIds = resolveAssigneeIds(
-    { userId: userId ?? "", userIds },
+    { userId, userIds: explicitUserIds },
     currentAssigneeIds,
+    preLockPrimaryUserId,
   );
   const newlyAddedAssigneeIds = resolvedUserIds.filter(
     (candidate) => !currentAssigneeIds.includes(candidate),
@@ -135,10 +139,18 @@ async function updateTask(
       });
     existingTask = locked;
 
-    const lockedCurrentIds = await getTaskAssigneeIds(tx, id, locked.userId);
+    const rawStoredRows = await getTaskAssigneeIds(tx, id, null);
+    const lockedCurrentIds =
+      preLockPrimaryUserId &&
+      locked.userId !== preLockPrimaryUserId &&
+      rawStoredRows[0] === preLockPrimaryUserId &&
+      (!locked.userId || !rawStoredRows.includes(locked.userId))
+        ? [...(locked.userId ? [locked.userId] : []), ...rawStoredRows.slice(1)]
+        : await getTaskAssigneeIds(tx, id, locked.userId);
     const targetUserIds = resolveAssigneeIds(
-      { userId: userId ?? "", userIds },
+      { userId, userIds: explicitUserIds },
       lockedCurrentIds,
+      preLockPrimaryUserId,
     );
     const syncResult = await syncTaskAssignees(
       tx,

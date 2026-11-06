@@ -21,6 +21,7 @@ import {
   isCustomFieldValueEmpty,
 } from "@/components/custom-fields/missing-required-fields";
 import type { CustomFieldDefinition } from "@/components/project/custom-fields/types";
+import { AssigneeOptionsMenu } from "@/components/task/menus/assignee-options-menu";
 import TaskDescriptionEditor from "@/components/task/task-description-editor";
 import TaskDueDatePicker from "@/components/task/task-due-date-picker";
 import { TaskRecurrenceBadge } from "@/components/task/task-recurrence-badge";
@@ -281,12 +282,19 @@ function CreateTaskModalContent({
         id: member.userId,
         name: member.user?.name ?? "",
         image: member.user?.image ?? null,
+        email: member.user?.email ?? null,
       })),
     [workspaceUsers?.members],
   );
   const projectMembersPending =
     Boolean(resolvedProjectId) && projectMembers === undefined;
-  const assigneeUnconfirmed = assigneeIds.length > 0 && projectMembersPending;
+  const assigneeUnconfirmed =
+    assigneeIds.length > 0 &&
+    (projectMembersPending ||
+      (Boolean(resolvedProjectId) &&
+        assigneeIds.some(
+          (id) => !(projectMembers ?? []).some((person) => person.id === id),
+        )));
   const assigneeOptions = useMemo(
     () =>
       resolvedProjectId
@@ -294,6 +302,7 @@ function CreateTaskModalContent({
             id: member.id,
             name: member.name,
             image: member.image,
+            email: member.email,
           }))
         : workspaceAssigneeOptions,
     [resolvedProjectId, projectMembers, workspaceAssigneeOptions],
@@ -1061,62 +1070,20 @@ function CreateTaskModalContent({
                     )}
                   </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-48 p-1" align="start">
-                  <div className="space-y-1">
-                    <button
-                      type="button"
-                      className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent/50 text-left transition-colors h-8"
-                      onClick={() => setAssigneeIds([])}
-                    >
-                      <div
-                        className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center"
-                        title={t(
-                          "common:modals.createTask.assignUnassignedTitle",
-                        )}
-                      >
-                        <span className="text-[10px] font-medium text-muted-foreground">
-                          ?
-                        </span>
-                      </div>
-                      <span className="text-sm">
-                        {t("common:modals.createTask.assignUnassigned")}
-                      </span>
-                      {selectedUsers.length === 0 && (
-                        <Check className="ml-auto h-4 w-4" />
-                      )}
-                    </button>
-                    {assigneeOptions.map((member) => {
-                      const isSelected = selectedUsers.some(
-                        (user) => user.id === member.id,
-                      );
-                      return (
-                        <button
-                          key={member.id}
-                          type="button"
-                          className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent/50 text-left transition-colors h-8"
-                          onClick={() =>
-                            setAssigneeIds((prev) =>
-                              prev.includes(member.id)
-                                ? prev.filter((id) => id !== member.id)
-                                : [...prev, member.id],
-                            )
-                          }
-                        >
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage
-                              src={member.image ?? ""}
-                              alt={member.name}
-                            />
-                            <AvatarFallback className="text-xs font-medium border border-border/30">
-                              {getInitials(member.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm">{member.name}</span>
-                          {isSelected && <Check className="ml-auto h-4 w-4" />}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <PopoverContent className="w-60 p-0" align="start">
+                  <AssigneeOptionsMenu
+                    members={assigneeOptions}
+                    current={assigneeIds}
+                    onSelect={(id) =>
+                      setAssigneeIds((prev) =>
+                        !id
+                          ? []
+                          : prev.includes(id)
+                            ? prev.filter((person) => person !== id)
+                            : [...prev, id],
+                      )
+                    }
+                  />
                 </PopoverContent>
               </Popover>
 

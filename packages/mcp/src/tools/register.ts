@@ -297,7 +297,8 @@ export function registerTools(
         startDate: optionalIsoDateTimeSchema,
         dueDate: optionalIsoDateTimeSchema,
         userId: optionalNonEmptyString,
-        userIds: z.array(nonEmptyString).max(50).optional(),
+        userIds: z.array(nonEmptyString).max(100).optional(),
+        assigneeIds: z.array(nonEmptyString).max(100).optional(),
       }),
     },
     async (args) => {
@@ -318,6 +319,9 @@ export function registerTools(
       }
       if (args.userIds !== undefined) {
         body.userIds = args.userIds;
+      }
+      if (args.assigneeIds !== undefined) {
+        body.assigneeIds = args.assigneeIds;
       }
       return run(() =>
         client.json(`/api/task/${encodeURIComponent(args.projectId)}`, {
@@ -363,7 +367,8 @@ export function registerTools(
     startDate: nullableOptionalIsoDateTimeSchema,
     dueDate: nullableOptionalIsoDateTimeSchema,
     userId: nullableOptionalNonEmptyString,
-    userIds: z.array(nonEmptyString).max(50).optional(),
+    userIds: z.array(nonEmptyString).max(100).optional(),
+    assigneeIds: z.array(nonEmptyString).max(100).optional(),
   });
 
   registerTool(
@@ -808,7 +813,14 @@ export function registerTools(
           .describe("Member user ID, or null to unassign"),
         userIds: z
           .array(nonEmptyString)
-          .max(50)
+          .max(100)
+          .optional()
+          .describe(
+            "Full list of assignee user IDs; an empty array unassigns all",
+          ),
+        assigneeIds: z
+          .array(nonEmptyString)
+          .max(100)
           .optional()
           .describe(
             "Full list of assignee user IDs; an empty array unassigns all",
@@ -816,8 +828,14 @@ export function registerTools(
       }),
     },
     async (args) => {
-      if (args.userId === undefined && args.userIds === undefined) {
-        return errorResult("Either userId or userIds is required.");
+      if (
+        args.userId === undefined &&
+        args.userIds === undefined &&
+        args.assigneeIds === undefined
+      ) {
+        return errorResult(
+          "Either userId, userIds, or assigneeIds is required.",
+        );
       }
       const payload: Record<string, unknown> = {};
       if (args.userId !== undefined) {
@@ -826,6 +844,9 @@ export function registerTools(
       if (args.userIds !== undefined) {
         payload.userIds = args.userIds;
       }
+      if (args.assigneeIds !== undefined) {
+        payload.assigneeIds = args.assigneeIds;
+      }
       return run(() =>
         client.json(`/api/task/assignee/${encodeURIComponent(args.taskId)}`, {
           method: "PUT",
@@ -833,6 +854,38 @@ export function registerTools(
         }),
       );
     },
+  );
+
+  registerTool(
+    "add_task_assignee",
+    {
+      description:
+        "Add an eligible project member to a task without replacing other assignees.",
+      inputSchema: z.object({ taskId: nonEmptyString, userId: nonEmptyString }),
+    },
+    async (args) =>
+      run(() =>
+        client.json(`/api/task/${encodeURIComponent(args.taskId)}/assignees`, {
+          method: "POST",
+          body: JSON.stringify({ userId: args.userId }),
+        }),
+      ),
+  );
+
+  registerTool(
+    "remove_task_assignee",
+    {
+      description:
+        "Remove one assignee without affecting the other assigned people.",
+      inputSchema: z.object({ taskId: nonEmptyString, userId: nonEmptyString }),
+    },
+    async (args) =>
+      run(() =>
+        client.json(
+          `/api/task/${encodeURIComponent(args.taskId)}/assignees/${encodeURIComponent(args.userId)}`,
+          { method: "DELETE" },
+        ),
+      ),
   );
 
   registerTool(

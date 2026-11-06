@@ -7,11 +7,16 @@ export type TaskAssigneeItem = {
 export function normalizeAssigneeInput(input: {
   userId?: string | null;
   userIds?: readonly (string | null | undefined)[] | null;
+  assigneeIds?: readonly (string | null | undefined)[] | null;
 }): string[] | undefined {
-  if (input.userIds !== undefined && input.userIds !== null) {
+  const rawList =
+    input.assigneeIds !== undefined && input.assigneeIds !== null
+      ? input.assigneeIds
+      : input.userIds;
+  if (rawList !== undefined && rawList !== null) {
     const seen = new Set<string>();
     const result: string[] = [];
-    for (const raw of input.userIds) {
+    for (const raw of rawList) {
       const trimmed = typeof raw === "string" ? raw.trim() : "";
       if (trimmed && !seen.has(trimmed)) {
         seen.add(trimmed);
@@ -33,11 +38,17 @@ export function resolveAssigneeIds(
   input: {
     userId?: string | null;
     userIds?: readonly (string | null | undefined)[] | null;
+    assigneeIds?: readonly (string | null | undefined)[] | null;
   },
   fallbackUserIds?: string | readonly string[] | null,
+  preLockPrimaryUserId?: string | null,
 ): string[] {
-  if (input.userIds !== undefined && input.userIds !== null) {
-    return normalizeAssigneeInput({ userIds: input.userIds }) ?? [];
+  const rawList =
+    input.assigneeIds !== undefined && input.assigneeIds !== null
+      ? input.assigneeIds
+      : input.userIds;
+  if (rawList !== undefined && rawList !== null) {
+    return normalizeAssigneeInput({ userIds: rawList }) ?? [];
   }
 
   const fallbackList = Array.isArray(fallbackUserIds)
@@ -48,10 +59,21 @@ export function resolveAssigneeIds(
 
   if (input.userId !== undefined) {
     const trimmed = typeof input.userId === "string" ? input.userId.trim() : "";
+    const preLockTrimmed =
+      typeof preLockPrimaryUserId === "string"
+        ? preLockPrimaryUserId.trim()
+        : "";
     if (!trimmed) {
+      if (preLockPrimaryUserId === null) {
+        return fallbackList;
+      }
       return [];
     }
-    if (fallbackList.length > 0 && fallbackList[0] === trimmed) {
+    if (
+      (fallbackList.length > 0 &&
+        (fallbackList[0] === trimmed || fallbackList.includes(trimmed))) ||
+      (preLockTrimmed && preLockTrimmed === trimmed)
+    ) {
       return fallbackList;
     }
     return [trimmed];

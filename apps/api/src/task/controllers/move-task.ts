@@ -13,7 +13,7 @@ import {
 import { publishEvent } from "../../events";
 import { assertProjectAccess } from "../../project-access/assert-project-access";
 import { filterUsersWithProjectAccess } from "../../project-access/filter-users-with-project-access";
-import { getTaskAssigneeIds, syncTaskAssignees } from "../task-assignees";
+import { loadTaskAssigneesMap, syncTaskAssignees } from "../task-assignees";
 import { claimTaskNumber } from "./claim-task-numbers";
 import { nextTaskPosition } from "./next-task-position";
 
@@ -169,21 +169,18 @@ async function moveTask({
     }
 
     let movedTask = updatedTask;
-    const currentAssigneeIds = await getTaskAssigneeIds(
-      tx,
-      taskId,
-      updatedTask.userId,
-    );
-    if (currentAssigneeIds.length > 0) {
+    const previousAssignees =
+      (await loadTaskAssigneesMap(tx, [updatedTask])).get(taskId) ?? [];
+    if (previousAssignees.length > 0) {
       const permitted = await filterUsersWithProjectAccess(
-        currentAssigneeIds,
+        previousAssignees.map((person) => person.id),
         destinationProjectId,
         tx,
       );
-      const nextAssigneeIds = currentAssigneeIds.filter((id) =>
-        permitted.has(id),
-      );
-      if (nextAssigneeIds.length !== currentAssigneeIds.length) {
+      const nextAssigneeIds = previousAssignees
+        .filter((person) => permitted.has(person.id))
+        .map((person) => person.id);
+      if (nextAssigneeIds.length !== previousAssignees.length) {
         const syncResult = await syncTaskAssignees(
           tx,
           taskId,
@@ -199,16 +196,30 @@ async function moveTask({
           ...updatedTask,
           userId: syncResult.primaryUserId,
         };
+        const removed = previousAssignees.filter(
+          (person) => !permitted.has(person.id),
+        );
         await createActivities(
-          [
-            {
-              taskId,
-              type: "unassigned",
-              userId: currentUserId,
-              content: null,
-              eventData: {},
-            },
-          ],
+          nextAssigneeIds.length > 0
+            ? removed.map((person) => ({
+                taskId,
+                type: "assignee_removed",
+                userId: currentUserId,
+                content: null,
+                eventData: {
+                  removedAssigneeId: person.id,
+                  removedAssignee: person.name ?? "",
+                },
+              }))
+            : [
+                {
+                  taskId,
+                  type: "unassigned",
+                  userId: currentUserId,
+                  content: null,
+                  eventData: {},
+                },
+              ],
           tx,
         );
       }

@@ -89,6 +89,9 @@ async function exportTasks(projectId: string) {
       startDate: task.startDate ? new Date(task.startDate).toISOString() : null,
       userId: task.userId || null,
       userIds: (assigneesMap.get(task.id) ?? []).map((assignee) => assignee.id),
+      assigneeIds: (assigneesMap.get(task.id) ?? []).map(
+        (assignee) => assignee.id,
+      ),
       labels: taskLabelsMap.get(task.id) || [],
     })),
   };

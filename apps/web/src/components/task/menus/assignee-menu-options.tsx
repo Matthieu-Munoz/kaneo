@@ -3,7 +3,7 @@ import { UnassignedAvatar } from "@/components/common/unassigned-avatar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials } from "@/lib/get-initials";
 
-type AssignableMember = {
+export type AssignableMember = {
   id: string;
   name?: string | null;
   email?: string | null;
@@ -34,6 +34,7 @@ export function assigneeMenuOptions(
     ...members.map((member) => ({
       value: member.id,
       label: member.name || member.email || "",
+      keywords: member.email ? [member.email] : [],
       icon: (
         <Avatar className="size-4">
           <AvatarImage src={member.image ?? ""} alt="" />

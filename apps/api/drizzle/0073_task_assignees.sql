@@ -15,3 +15,10 @@ SELECT md5("id" || ':' || "assignee_id"), "id", "assignee_id", "created_at"
 FROM "task"
 WHERE "assignee_id" IS NOT NULL
 ON CONFLICT ("task_id", "user_id") DO NOTHING;
+--> statement-breakpoint
+UPDATE "task_reminder_sent" AS reminder
+SET "reminder_type" = reminder."reminder_type" || ':' || task."assignee_id"
+FROM "task" AS task
+WHERE reminder."task_id" = task."id"
+  AND task."assignee_id" IS NOT NULL
+  AND reminder."reminder_type" IN ('configured_before', 'overdue');
